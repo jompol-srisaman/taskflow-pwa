@@ -5,7 +5,6 @@ import { formatDeadline } from '@/lib/utils'
 import type { Task } from '@/types'
 
 interface KanbanViewProps {
-  userId: string
   tasks: Task[]
 }
 
@@ -15,7 +14,7 @@ const COLUMNS = [
   { status: 'done',        label: 'เสร็จแล้ว',   color: 'var(--green)', icon: '●' },
 ] as const
 
-export function KanbanView({ userId, tasks }: KanbanViewProps) {
+export function KanbanView({ tasks }: KanbanViewProps) {
   const { openTaskModal } = useUIStore()
   const supabase = createClient()
 
@@ -32,17 +31,12 @@ export function KanbanView({ userId, tasks }: KanbanViewProps) {
         const colTasks = tasks.filter(t => t.status === col.status)
         return (
           <div key={col.status} style={{
-            background: 'var(--surface2)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r2)',
-            padding: '12px',
-            minHeight: '120px',
+            background: 'var(--surface2)', border: '1px solid var(--border)',
+            borderRadius: 'var(--r2)', padding: '12px', minHeight: '120px',
           }}>
-            {/* Column header */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              marginBottom: '10px', paddingBottom: '8px',
-              borderBottom: '1px solid var(--border)',
+              marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid var(--border)',
             }}>
               <span style={{ fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ color: col.color }}>{col.icon}</span>
@@ -55,11 +49,9 @@ export function KanbanView({ userId, tasks }: KanbanViewProps) {
               }}>{colTasks.length}</span>
             </div>
 
-            {/* Cards */}
             {colTasks.map(task => (
               <KanbanCard
-                key={task.id}
-                task={task}
+                key={task.id} task={task}
                 onEdit={() => openTaskModal(task.id)}
                 onMove={moveTask}
                 isFirst={col.status === 'todo'}
@@ -67,21 +59,17 @@ export function KanbanView({ userId, tasks }: KanbanViewProps) {
               />
             ))}
 
-            {/* Add button (todo column) */}
             {col.status === 'todo' && (
               <button
                 onClick={() => openTaskModal()}
                 style={{
-                  border: '1px dashed var(--border)',
-                  borderRadius: 'var(--r)', padding: '8px',
-                  textAlign: 'center', fontSize: '12px',
-                  color: 'var(--text3)', cursor: 'pointer',
-                  background: 'transparent', width: '100%',
-                  fontFamily: 'var(--font)', marginTop: '6px',
-                  transition: 'all 0.12s',
+                  border: '1px dashed var(--border)', borderRadius: 'var(--r)',
+                  padding: '8px', textAlign: 'center', fontSize: '12px',
+                  color: 'var(--text3)', cursor: 'pointer', background: 'transparent',
+                  width: '100%', fontFamily: 'var(--font)', marginTop: '6px', transition: 'all 0.12s',
                 }}
-                onMouseEnter={e => { (e.currentTarget).style.borderColor = 'var(--border2)'; (e.currentTarget).style.color = 'var(--text2)' }}
-                onMouseLeave={e => { (e.currentTarget).style.borderColor = 'var(--border)'; (e.currentTarget).style.color = 'var(--text3)' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text2)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text3)' }}
               >+ เพิ่มงาน</button>
             )}
           </div>
@@ -92,14 +80,9 @@ export function KanbanView({ userId, tasks }: KanbanViewProps) {
 }
 
 function KanbanCard({ task, onEdit, onMove, isFirst, isLast }: {
-  task: Task
-  onEdit: () => void
-  onMove: (id: string, status: string) => void
-  isFirst: boolean
-  isLast: boolean
+  task: Task; onEdit: () => void; onMove: (id: string, status: string) => void; isFirst: boolean; isLast: boolean
 }) {
   const { label: deadlineLabel, status: deadlineStatus } = formatDeadline(task.deadline)
-
   const PRIO = {
     high:   { bg: 'var(--red-bg)',    color: 'var(--red)',    label: 'สูง' },
     medium: { bg: 'var(--orange-bg)', color: 'var(--orange)', label: 'กลาง' },
@@ -122,7 +105,7 @@ function KanbanCard({ task, onEdit, onMove, isFirst, isLast }: {
     <div style={{
       background: 'var(--surface)', border: '1px solid var(--border)',
       borderRadius: 'var(--r)', padding: '10px 11px', marginBottom: '7px',
-      cursor: 'pointer', transition: 'border-color 0.15s', position: 'relative',
+      cursor: 'pointer', transition: 'border-color 0.15s',
       opacity: task.status === 'done' ? 0.65 : 1,
     }}
       onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border2)'}
@@ -132,47 +115,15 @@ function KanbanCard({ task, onEdit, onMove, isFirst, isLast }: {
       <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '5px', lineHeight: 1.4, wordBreak: 'break-word', paddingRight: '8px', textDecoration: task.status === 'done' ? 'line-through' : 'none' }}>
         {task.title}
       </div>
-
-      {/* Meta */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginBottom: '7px' }}>
         <span className="badge" style={{ background: prio.bg, color: prio.color }}>{prio.label}</span>
-        {task.category && (
-          <span className="badge" style={{ background: task.category.bg_color, color: task.category.color }}>{task.category.name}</span>
-        )}
-        {deadlineLabel && (
-          <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: deadlineStatus === 'overdue' ? 'var(--red)' : 'var(--text3)' }}>
-            📅 {deadlineLabel}
-          </span>
-        )}
+        {task.category && <span className="badge" style={{ background: task.category.bg_color, color: task.category.color }}>{task.category.name}</span>}
+        {deadlineLabel && <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: deadlineStatus === 'overdue' ? 'var(--red)' : 'var(--text3)' }}>📅 {deadlineLabel}</span>}
       </div>
-
-      {/* Move buttons */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', borderTop: '1px solid var(--border)', paddingTop: '7px' }} onClick={e => e.stopPropagation()}>
-        <button
-          onClick={moveLeft}
-          disabled={isFirst}
-          style={{
-            width: '24px', height: '24px', border: 'none', background: 'transparent',
-            cursor: isFirst ? 'not-allowed' : 'pointer',
-            borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: isFirst ? 'var(--surface2)' : 'var(--text3)',
-            fontSize: '12px', transition: 'all 0.12s',
-          }}
-          title="ย้ายซ้าย"
-        >◀</button>
+        <button onClick={moveLeft} disabled={isFirst} style={{ width: '24px', height: '24px', border: 'none', background: 'transparent', cursor: isFirst ? 'not-allowed' : 'pointer', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isFirst ? 'var(--surface2)' : 'var(--text3)', fontSize: '12px' }} title="ย้ายซ้าย">◀</button>
         <div style={{ flex: 1 }} />
-        <button
-          onClick={moveRight}
-          disabled={isLast}
-          style={{
-            width: '24px', height: '24px', border: 'none', background: 'transparent',
-            cursor: isLast ? 'not-allowed' : 'pointer',
-            borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: isLast ? 'var(--surface2)' : 'var(--text3)',
-            fontSize: '12px', transition: 'all 0.12s',
-          }}
-          title="ย้ายขวา"
-        >▶</button>
+        <button onClick={moveRight} disabled={isLast} style={{ width: '24px', height: '24px', border: 'none', background: 'transparent', cursor: isLast ? 'not-allowed' : 'pointer', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLast ? 'var(--surface2)' : 'var(--text3)', fontSize: '12px' }} title="ย้ายขวา">▶</button>
       </div>
     </div>
   )

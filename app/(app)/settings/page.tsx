@@ -2,7 +2,9 @@
 import { useState, useEffect } from 'react'
 import { useUIStore } from '@/store/uiStore'
 import { useTaskStore } from '@/store/taskStore'
+import { useAuthStore } from '@/store/authStore'
 import { createClient } from '@/lib/supabase/client'
+import { gcalIsConnected } from '@/lib/googleCalendar'
 import type { ThemeType, AccentColor, FontSize } from '@/types'
 
 const ACCENT_OPTIONS: { value: AccentColor; color: string }[] = [
@@ -17,27 +19,43 @@ const ACCENT_OPTIONS: { value: AccentColor; color: string }[] = [
 export default function SettingsPage() {
   const { theme, accent, fontSize, setTheme, setAccent, setFontSize } = useUIStore()
   const { categories } = useTaskStore()
+  const { userId, profile, setAuth } = useAuthStore()
   const supabase = createClient()
 
-  const [name, setName] = useState('')
+  const [name, setName] = useState(profile?.name || '')
   const [saving, setSaving] = useState(false)
   const [newCatName, setNewCatName] = useState('')
   const [newCatColor, setNewCatColor] = useState('#6B6760')
-  const [userId, setUserId] = useState('')
+  const [gcalSync, setGcalSync] = useState(profile?.settings?.googleCalendarSync ?? false)
+  const [gcalConnected, setGcalConnected] = useState<boolean | null>(null)
+  const [gcalTesting, setGcalTesting] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setUserId(data.user.id)
-        setName(data.user.user_metadata?.full_name || '')
-      }
-    })
-  }, [])
+    if (profile?.name) setName(profile.name)
+    if (profile?.settings?.googleCalendarSync !== undefined) setGcalSync(profile.settings.googleCalendarSync)
+  }, [profile])
+
+  async function testGcalConnection() {
+    setGcalTesting(true)
+    const ok = await gcalIsConnected()
+    setGcalConnected(ok)
+    setGcalTesting(false)
+  }
+
+  async function saveGcalSync(enabled: boolean) {
+    if (!userId || !profile) return
+    setGcalSync(enabled)
+    const newSettings = { ...profile.settings, googleCalendarSync: enabled }
+    await supabase.from('profiles').update({ settings: newSettings }).eq('id', userId)
+    setAuth(userId, { ...profile, settings: newSettings })
+  }
 
   async function saveProfile() {
     if (!userId) return
     setSaving(true)
     await supabase.from('profiles').update({ name }).eq('id', userId)
+    // Update local store
+    if (profile) setAuth(userId, { ...profile, name })
     setSaving(false)
   }
 
@@ -68,16 +86,13 @@ export default function SettingsPage() {
         <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>ปรับแต่งการใช้งาน</div>
       </div>
 
-      <div style={{ maxWidth: '560px', display: 'flex', flexDirection: 'column', gap: '0' }}>
+      <div style={{ maxWidth: '560px', display: 'flex', flexDirection: 'column' }}>
 
-        {/* Profile */}
         <SettingSection title="โปรไฟล์">
           <SettingRow label="ชื่อผู้ใช้" sub="แสดงใน Sidebar">
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <input
-                type="text"
-                value={name}
-                onChange={e => setName(e.target.value)}
+                type="text" value={name} onChange={e => setName(e.target.value)}
                 style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r)', fontFamily: 'var(--font)', fontSize: '13px', color: 'var(--text)', background: 'var(--surface)', width: '160px' }}
               />
               <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={saveProfile} disabled={saving}>
@@ -87,7 +102,6 @@ export default function SettingsPage() {
           </SettingRow>
         </SettingSection>
 
-        {/* Appearance */}
         <SettingSection title="หน้าตาแอป">
           <SettingRow label="Theme" sub="Light / Dark / Auto">
             <div style={{ display: 'flex', gap: '5px' }}>
@@ -108,16 +122,12 @@ export default function SettingsPage() {
           <SettingRow label="Accent Color" sub="สีหลักของแอป">
             <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap' }}>
               {ACCENT_OPTIONS.map(opt => (
-                <div
-                  key={opt.value}
-                  onClick={() => setAccent(opt.value)}
-                  style={{
-                    width: '26px', height: '26px', borderRadius: '50%',
-                    background: opt.color, cursor: 'pointer',
-                    border: `3px solid ${accent === opt.value ? 'var(--text)' : 'transparent'}`,
-                    transition: 'border-color 0.15s',
-                  }}
-                />
+                <div key={opt.value} onClick={() => setAccent(opt.value)} style={{
+                  width: '26px', height: '26px', borderRadius: '50%',
+                  background: opt.color, cursor: 'pointer',
+                  border: `3px solid ${accent === opt.value ? 'var(--text)' : 'transparent'}`,
+                  transition: 'border-color 0.15s',
+                }} />
               ))}
             </div>
           </SettingRow>
@@ -131,15 +141,12 @@ export default function SettingsPage() {
                   background: fontSize === f ? 'var(--accent)' : 'transparent',
                   color: fontSize === f ? 'var(--surface)' : 'var(--text2)',
                   fontFamily: 'var(--font)', transition: 'all 0.12s',
-                }}>
-                  {f.toUpperCase()}
-                </button>
+                }}>{f.toUpperCase()}</button>
               ))}
             </div>
           </SettingRow>
         </SettingSection>
 
-        {/* Categories */}
         <SettingSection title="กลุ่มงาน">
           {categories.map(c => (
             <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
@@ -147,40 +154,59 @@ export default function SettingsPage() {
               <span style={{ fontSize: '13px', flex: 1 }}>{c.name}</span>
               {c.is_preset && <span style={{ fontSize: '11px', color: 'var(--text3)' }}>preset</span>}
               {!c.is_preset && (
-                <button
-                  onClick={() => deleteCategory(c.id)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: '14px', padding: '2px 6px' }}
+                <button onClick={() => deleteCategory(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: '14px', padding: '2px 6px' }}
                   onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = 'var(--red)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = 'var(--text3)'}
-                >×</button>
+                  onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = 'var(--text3)'}>×</button>
               )}
             </div>
           ))}
-
-          {/* Add category */}
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px', alignItems: 'center' }}>
-            <input
-              type="color"
-              value={newCatColor}
-              onChange={e => setNewCatColor(e.target.value)}
-              style={{ width: '32px', height: '32px', padding: '2px', border: '1px solid var(--border)', borderRadius: 'var(--r)', cursor: 'pointer', background: 'var(--surface)' }}
-            />
-            <input
-              type="text"
-              value={newCatName}
-              onChange={e => setNewCatName(e.target.value)}
+            <input type="color" value={newCatColor} onChange={e => setNewCatColor(e.target.value)}
+              style={{ width: '32px', height: '32px', padding: '2px', border: '1px solid var(--border)', borderRadius: 'var(--r)', cursor: 'pointer', background: 'var(--surface)' }} />
+            <input type="text" value={newCatName} onChange={e => setNewCatName(e.target.value)}
               placeholder="ชื่อกลุ่มใหม่..."
               style={{ flex: 1, padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r)', fontFamily: 'var(--font)', fontSize: '13px', color: 'var(--text)', background: 'var(--surface)' }}
-              onKeyDown={e => { if (e.key === 'Enter') addCategory() }}
-            />
+              onKeyDown={e => { if (e.key === 'Enter') addCategory() }} />
             <button className="btn-primary" style={{ padding: '7px 14px', fontSize: '12px' }} onClick={addCategory}>+ เพิ่ม</button>
           </div>
         </SettingSection>
 
-        {/* About */}
+        <SettingSection title="Google Calendar">
+          <SettingRow label="Sync อัตโนมัติ" sub="สร้าง/อัปเดต/ลบ event ใน Google Calendar เมื่อมี deadline">
+            <div
+              onClick={() => saveGcalSync(!gcalSync)}
+              style={{
+                width: '40px', height: '22px', borderRadius: '11px',
+                background: gcalSync ? '#4285F4' : 'var(--border)',
+                cursor: 'pointer', transition: 'background 0.2s', position: 'relative',
+              }}
+            >
+              <div style={{
+                position: 'absolute', top: '3px',
+                left: gcalSync ? '21px' : '3px',
+                width: '16px', height: '16px', borderRadius: '50%',
+                background: 'white', transition: 'left 0.2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,.3)',
+              }} />
+            </div>
+          </SettingRow>
+          <SettingRow label="สถานะการเชื่อมต่อ" sub="ตรวจสอบว่า token ยังใช้ได้อยู่">
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {gcalConnected === true && <span style={{ fontSize: '12px', color: 'var(--green)' }}>✓ เชื่อมต่อแล้ว</span>}
+              {gcalConnected === false && <span style={{ fontSize: '12px', color: 'var(--red)' }}>✗ ไม่ได้เชื่อมต่อ</span>}
+              <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: '12px' }} onClick={testGcalConnection} disabled={gcalTesting}>
+                {gcalTesting ? 'กำลังตรวจสอบ...' : 'ทดสอบ'}
+              </button>
+            </div>
+          </SettingRow>
+          <div style={{ fontSize: '12px', color: 'var(--text3)', padding: '8px 0', lineHeight: 1.6 }}>
+            หากเชื่อมต่อไม่ได้: ออกจากระบบ → เข้าสู่ระบบใหม่ผ่าน Google → ระบบจะขอสิทธิ์ Calendar อัตโนมัติ
+          </div>
+        </SettingSection>
+
         <SettingSection title="เกี่ยวกับ">
           <div style={{ fontSize: '13px', color: 'var(--text2)', lineHeight: 1.7 }}>
-            <div><strong>TaskFlow</strong> v4.0 PWA</div>
+            <div><strong>KhunMeenFlow</strong> v4.0 PWA</div>
             <div style={{ color: 'var(--text3)', fontSize: '12px', marginTop: '4px' }}>
               สร้างด้วย Next.js + Supabase + Vercel<br/>
               Sync ข้ามอุปกรณ์แบบ Real-time

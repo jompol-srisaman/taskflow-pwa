@@ -2,12 +2,13 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useUIStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
+import { gcalUpdate, gcalDelete } from '@/lib/googleCalendar'
 import { formatDeadline, formatTime, getSubtaskProgress, RECURRING_LABEL } from '@/lib/utils'
 import type { Task } from '@/types'
 
 interface TaskCardProps {
   task: Task
-  userId: string
   compact?: boolean
 }
 
@@ -17,17 +18,18 @@ const PRIORITY_STYLE = {
   low:    { bg: 'var(--blue-bg)',   color: 'var(--blue)',   label: 'ต่ำ' },
 }
 
-export function TaskCard({ task, userId, compact = false }: TaskCardProps) {
+export function TaskCard({ task, compact = false }: TaskCardProps) {
   const { openTaskModal } = useUIStore()
+  const { userId } = useAuthStore()
   const supabase = createClient()
   const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const isDone = task.status === 'done'
   const prio = PRIORITY_STYLE[task.priority] || PRIORITY_STYLE.medium
   const { label: deadlineLabel, status: deadlineStatus } = formatDeadline(task.deadline)
   const subtaskProgress = getSubtaskProgress(task.subtasks || [])
 
-  // Active timer time
   const [timerDisplay] = useState(() => {
     if (!task.timer_started_at) return task.total_time_seconds
     return task.total_time_seconds + Math.floor((Date.now() - new Date(task.timer_started_at).getTime()) / 1000)
@@ -40,7 +42,12 @@ export function TaskCard({ task, userId, compact = false }: TaskCardProps) {
       completed_at: newStatus === 'done' ? new Date().toISOString() : null,
     }).eq('id', task.id)
 
-    if (newStatus === 'done') {
+    // Sync status change to Google Calendar
+    if (task.google_event_id && task.deadline) {
+      gcalUpdate(task.google_event_id, { ...task, status: newStatus })
+    }
+
+    if (newStatus === 'done' && userId) {
       await supabase.from('activity_log').insert({
         user_id: userId, task_id: task.id,
         action: 'completed', task_title: task.title,
@@ -49,22 +56,32 @@ export function TaskCard({ task, userId, compact = false }: TaskCardProps) {
   }
 
   async function handleDelete() {
-    if (!confirm(`ลบ "${task.title}"?`)) return
     setDeleting(true)
-    await supabase.from('activity_log').insert({
-      user_id: userId, task_id: task.id,
-      action: 'deleted', task_title: task.title,
-    })
-    await supabase.from('tasks').delete().eq('id', task.id)
+    try {
+      // Remove from Google Calendar first
+      if (task.google_event_id) {
+        gcalDelete(task.google_event_id)
+      }
+      if (userId) {
+        await supabase.from('activity_log').insert({
+          user_id: userId, task_id: task.id,
+          action: 'deleted', task_title: task.title,
+        })
+      }
+      await supabase.from('tasks').delete().eq('id', task.id)
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
   }
 
   return (
-    <div className="task-card fade-in" style={{ opacity: isDone ? 0.65 : 1 }}>
+    <div className="task-card fade-in" style={{ opacity: isDone ? 0.65 : 1, position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
         {/* Checkbox */}
         <div
           className={`task-check${isDone ? ' checked' : ''}`}
-          style={{ marginTop: '2px' }}
+          style={{ marginTop: '2px', flexShrink: 0 }}
           onClick={toggleDone}
         />
 
@@ -85,61 +102,38 @@ export function TaskCard({ task, userId, compact = false }: TaskCardProps) {
             }}>{task.note}</div>
           )}
 
-          {/* Meta badges */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-            {/* Priority */}
             <span className="badge" style={{ background: prio.bg, color: prio.color }}>{prio.label}</span>
-
-            {/* Category */}
             {task.category && (
-              <span className="badge" style={{
-                background: task.category.bg_color,
-                color: task.category.color,
-              }}>{task.category.name}</span>
+              <span className="badge" style={{ background: task.category.bg_color, color: task.category.color }}>{task.category.name}</span>
             )}
-
-            {/* Deadline */}
             {deadlineLabel && (
               <span style={{
                 fontSize: '11px', fontFamily: 'var(--mono)',
                 color: deadlineStatus === 'overdue' ? 'var(--red)' : deadlineStatus === 'today' || deadlineStatus === 'soon' ? 'var(--orange)' : 'var(--text3)',
                 fontWeight: (deadlineStatus === 'overdue' || deadlineStatus === 'soon') ? 500 : 400,
-                display: 'flex', alignItems: 'center', gap: '3px',
-              }}>
-                📅 {deadlineLabel}
-              </span>
+              }}>📅 {deadlineLabel}</span>
             )}
-
-            {/* Recurring */}
-            {task.recurring && (
-              <span className="badge badge-recur">🔄 {RECURRING_LABEL[task.recurring]}</span>
-            )}
-
-            {/* Timer */}
+            {task.recurring && <span className="badge badge-recur">🔄 {RECURRING_LABEL[task.recurring]}</span>}
             {timerDisplay > 0 && (
-              <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                ⏱ {formatTime(timerDisplay)}
-              </span>
+              <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>⏱ {formatTime(timerDisplay)}</span>
+            )}
+            {task.google_event_id && (
+              <span title="Synced to Google Calendar" style={{ fontSize: '10px', color: '#4285F4', fontFamily: 'var(--mono)' }}>G</span>
             )}
           </div>
 
-          {/* Subtask progress */}
           {subtaskProgress.total > 0 && (
             <div style={{ marginTop: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text3)' }}>
-                  Sub-tasks {subtaskProgress.done}/{subtaskProgress.total}
-                </span>
-                <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>
-                  {subtaskProgress.pct}%
-                </span>
+                <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Sub-tasks {subtaskProgress.done}/{subtaskProgress.total}</span>
+                <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{subtaskProgress.pct}%</span>
               </div>
               <div style={{ height: '3px', background: 'var(--surface2)', borderRadius: '2px', overflow: 'hidden' }}>
                 <div style={{
                   height: '100%', borderRadius: '2px',
                   background: subtaskProgress.pct === 100 ? 'var(--green)' : 'var(--accent)',
-                  width: `${subtaskProgress.pct}%`,
-                  transition: 'width .5s ease',
+                  width: `${subtaskProgress.pct}%`, transition: 'width .5s ease',
                 }} />
               </div>
             </div>
@@ -149,9 +143,40 @@ export function TaskCard({ task, userId, compact = false }: TaskCardProps) {
         {/* Actions */}
         <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto', flexShrink: 0 }}>
           <button className="icon-btn" onClick={() => openTaskModal(task.id)} title="แก้ไข">✏️</button>
-          <button className="icon-btn" onClick={handleDelete} disabled={deleting} title="ลบ" style={{ color: 'var(--red)' }}>🗑</button>
+          <button
+            className="icon-btn"
+            onClick={() => setConfirmDelete(true)}
+            disabled={deleting}
+            title="ลบ"
+            style={{ color: 'var(--red)' }}
+          >🗑</button>
         </div>
       </div>
+
+      {/* Inline delete confirmation — no window.confirm (blocked in PWA standalone) */}
+      {confirmDelete && (
+        <div style={{
+          marginTop: '10px',
+          padding: '10px 12px',
+          background: 'var(--red-bg)',
+          border: '1px solid var(--red-border)',
+          borderRadius: 'var(--r)',
+          display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: '12px', color: 'var(--red)', flex: 1 }}>ลบ "{task.title}" แน่ใจไหม?</span>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              style={{ padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r)', fontSize: '12px', cursor: 'pointer', background: 'var(--surface)', color: 'var(--text2)', fontFamily: 'var(--font)' }}
+            >ยกเลิก</button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{ padding: '4px 10px', border: 'none', borderRadius: 'var(--r)', fontSize: '12px', cursor: 'pointer', background: 'var(--red)', color: 'white', fontFamily: 'var(--font)' }}
+            >{deleting ? '...' : 'ลบ'}</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

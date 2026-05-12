@@ -1,28 +1,22 @@
 'use client'
 import { useMemo } from 'react'
-import { useTaskStore } from '@/store/taskStore'
-import { useUIStore } from '@/store/uiStore'
 import { TaskCard } from '@/components/tasks/TaskCard'
 import { isPast, parseISO, isToday } from 'date-fns'
 import type { Task } from '@/types'
 
 interface ListViewProps {
-  userId: string
   tasks: Task[]
 }
 
-export function ListView({ userId, tasks }: ListViewProps) {
-  const { filter } = useUIStore()
-
-  // Group by status sections
+export function ListView({ tasks }: ListViewProps) {
   const sections = useMemo(() => {
     const overdue = tasks.filter(t => t.status !== 'done' && t.deadline && isPast(parseISO(t.deadline)) && !isToday(parseISO(t.deadline)))
     const active  = tasks.filter(t => t.status !== 'done' && !(t.deadline && isPast(parseISO(t.deadline)) && !isToday(parseISO(t.deadline))))
     const done    = tasks.filter(t => t.status === 'done')
     return [
-      { key: 'overdue', title: 'เกินกำหนด', color: 'var(--red)',    tasks: overdue },
-      { key: 'active',  title: 'กำลังดำเนินการ', color: 'var(--blue)', tasks: active },
-      { key: 'done',    title: 'เสร็จแล้ว',  color: 'var(--green)', tasks: done },
+      { key: 'overdue', title: 'เกินกำหนด',     color: 'var(--red)',    tasks: overdue },
+      { key: 'active',  title: 'กำลังดำเนินการ', color: 'var(--blue)',   tasks: active },
+      { key: 'done',    title: 'เสร็จแล้ว',      color: 'var(--green)', tasks: done },
     ].filter(s => s.tasks.length > 0)
   }, [tasks])
 
@@ -46,7 +40,7 @@ export function ListView({ userId, tasks }: ListViewProps) {
             <span className="section-count">{section.tasks.length}</span>
           </div>
           {section.tasks.map(task => (
-            <TaskCard key={task.id} task={task} userId={userId} />
+            <TaskCard key={task.id} task={task} />
           ))}
         </div>
       ))}

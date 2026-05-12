@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'TaskFlow',
+  title: 'KhunMeenFlow',
   description: 'จัดการงานอย่างมืออาชีพ — Personal Task Manager PWA',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'TaskFlow',
+    title: 'KhunMeenFlow',
   },
   icons: {
     apple: '/icons/apple-touch-icon.png',

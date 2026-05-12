@@ -10,6 +10,7 @@ export function useTasks(userId: string) {
   const supabase = createClient()
 
   const fetchAll = useCallback(async () => {
+    if (!userId) return
     setLoading(true)
     const [tasksRes, catsRes, logRes] = await Promise.all([
       supabase
@@ -31,13 +32,14 @@ export function useTasks(userId: string) {
     ])
 
     if (tasksRes.data) setTasks(tasksRes.data as Task[])
-    if (catsRes.data) setCategories(catsRes.data as Category[])
-    if (logRes.data) setActivityLog(logRes.data as ActivityLog[])
+    if (catsRes.data)  setCategories(catsRes.data as Category[])
+    if (logRes.data)   setActivityLog(logRes.data as ActivityLog[])
     setLoading(false)
   }, [userId])
 
-  // Realtime subscription
   useEffect(() => {
+    if (!userId) return
+
     fetchAll()
 
     const channel = supabase
@@ -47,7 +49,6 @@ export function useTasks(userId: string) {
           if (payload.eventType === 'DELETE') {
             removeTask(payload.old.id)
           } else {
-            // Refetch with joins on insert/update
             const { data } = await supabase
               .from('tasks')
               .select('*, category:categories(*), subtasks(*)')
@@ -78,6 +79,7 @@ export function useTaskActions(userId: string) {
   const supabase = createClient()
 
   async function createTask(data: Partial<Task>) {
+    if (!userId) return { task: null, error: new Error('Not authenticated') }
     const { data: task, error } = await supabase
       .from('tasks')
       .insert({ ...data, user_id: userId })
@@ -86,10 +88,8 @@ export function useTaskActions(userId: string) {
 
     if (!error && task) {
       await supabase.from('activity_log').insert({
-        user_id: userId,
-        task_id: task.id,
-        action: 'created',
-        task_title: task.title,
+        user_id: userId, task_id: task.id,
+        action: 'created', task_title: task.title,
       })
     }
     return { task, error }
@@ -101,6 +101,7 @@ export function useTaskActions(userId: string) {
   }
 
   async function toggleTaskDone(task: Task) {
+    if (!userId) return { error: new Error('Not authenticated') }
     const isDone = task.status !== 'done'
     const { error } = await supabase.from('tasks').update({
       status: isDone ? 'done' : 'todo',
@@ -109,27 +110,25 @@ export function useTaskActions(userId: string) {
 
     if (!error && isDone) {
       await supabase.from('activity_log').insert({
-        user_id: userId,
-        task_id: task.id,
-        action: 'completed',
-        task_title: task.title,
+        user_id: userId, task_id: task.id,
+        action: 'completed', task_title: task.title,
       })
     }
     return { error }
   }
 
   async function deleteTask(task: Task) {
+    if (!userId) return { error: new Error('Not authenticated') }
     await supabase.from('activity_log').insert({
-      user_id: userId,
-      task_id: task.id,
-      action: 'deleted',
-      task_title: task.title,
+      user_id: userId, task_id: task.id,
+      action: 'deleted', task_title: task.title,
     })
     const { error } = await supabase.from('tasks').delete().eq('id', task.id)
     return { error }
   }
 
   async function ensurePresetCategories() {
+    if (!userId) return
     const { data: existing } = await supabase
       .from('categories')
       .select('name')

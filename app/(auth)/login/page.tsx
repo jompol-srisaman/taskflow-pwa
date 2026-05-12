@@ -55,7 +55,7 @@ export default function LoginPage() {
             </svg>
           </div>
           <div style={{ textAlign: 'left' }}>
-            <div style={{ fontSize: '20px', fontWeight: 600, letterSpacing: '-0.4px' }}>TaskFlow</div>
+            <div style={{ fontSize: '20px', fontWeight: 600, letterSpacing: '-0.4px' }}>KhunMeenFlow</div>
             <div style={{ fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>v4.0 PWA</div>
           </div>
         </div>

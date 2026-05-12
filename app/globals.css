@@ -104,6 +104,11 @@ body {
 /* ═══════════════════════════════════════
    LAYOUT SHELL
 ═══════════════════════════════════════ */
+/* mobile-header is fixed (position:fixed), hidden on desktop */
+.mobile-header-bar { display: none; }
+.bottom-nav-bar    { display: none; }
+.desktop-only      { display: inline-flex; }
+
 .shell {
   display: flex;
   height: 100vh;
@@ -117,8 +122,8 @@ body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  transition: transform 0.25s;
-  z-index: 40;
+  transition: transform 0.25s cubic-bezier(.4,0,.2,1);
+  z-index: 49;
 }
 
 .content {
@@ -129,15 +134,29 @@ body {
 }
 
 @media (max-width: 768px) {
-  .shell { flex-direction: column; }
+  .mobile-header-bar { display: flex !important; }
+  .bottom-nav-bar    { display: flex !important; }
+  .desktop-only      { display: none !important; }
+
+  /* Use position:fixed so shell always fills exactly the space
+     between the fixed header and bottom of viewport — avoids 100vh issues on mobile Safari */
+  .shell {
+    position: fixed;
+    top: 50px; left: 0; right: 0; bottom: 0;
+    height: auto;
+  }
+
   .sidebar {
     position: fixed;
     top: 50px; left: 0; bottom: 0;
     transform: translateX(-100%);
-    box-shadow: 4px 0 24px rgba(0,0,0,.12);
+    box-shadow: 4px 0 24px rgba(0,0,0,.18);
+    z-index: 49;
   }
   .sidebar.open { transform: translateX(0); }
-  .content { padding: 14px 14px 72px; }
+
+  /* Extra bottom padding accounts for 58px fixed bottom-nav */
+  .content { padding: 14px 14px 80px; }
 }
 
 /* ═══════════════════════════════════════
@@ -397,6 +416,8 @@ body {
 ═══════════════════════════════════════ */
 @keyframes blink { 0%, 100% { opacity: 1 } 50% { opacity: .5 } }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .4 } }
+@keyframes spin { to { transform: rotate(360deg); } }
 .fade-in { animation: fadeIn 0.2s ease forwards; }
 
 /* ═══════════════════════════════════════

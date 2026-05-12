@@ -1,64 +1,101 @@
 'use client'
 import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useUIStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
 import { useTasks, useTaskActions } from '@/hooks/useTasks'
+import { createClient } from '@/lib/supabase/client'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MobileHeader } from '@/components/layout/MobileHeader'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { TaskModal } from '@/components/tasks/TaskModal'
-import type { Profile } from '@/types'
 
-interface AppShellProps {
-  children: React.ReactNode
-  profile: Profile | null
-  userId: string
-}
-
-export function AppShell({ children, profile, userId }: AppShellProps) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   const { theme, accent, fontSize, sidebarOpen, setSidebarOpen } = useUIStore()
-  const { ensurePresetCategories } = useTaskActions(userId)
+  const { userId, initialized, setAuth, clearAuth } = useAuthStore()
+  const router = useRouter()
+  const supabase = createClient()
 
-  useTasks(userId)
-
+  // Client-side auth init — reads session from localStorage (instant, no network call)
   useEffect(() => {
-    ensurePresetCategories()
-  }, [userId])
+    async function init() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        clearAuth()
+        router.replace('/login')
+        return
+      }
+      const uid = session.user.id
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, name, avatar_url, settings')
+        .eq('id', uid)
+        .single()
+      setAuth(uid, profile as import('@/types').Profile | null)
+    }
+    init()
 
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        clearAuth()
+        router.replace('/login')
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Apply theme/accent/fontSize to <html>
   useEffect(() => {
     const html = document.documentElement
-    const resolvedTheme = theme === 'auto'
+    const resolved = theme === 'auto'
       ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
       : theme
-    html.setAttribute('data-theme', resolvedTheme)
+    html.setAttribute('data-theme', resolved)
     html.setAttribute('data-accent', accent === 'black' ? '' : accent)
     html.setAttribute('data-fs', fontSize)
   }, [theme, accent, fontSize])
 
+  const { ensurePresetCategories } = useTaskActions(userId)
+  useTasks(userId)
+
+  useEffect(() => {
+    if (userId) ensurePresetCategories()
+  }, [userId])
+
+  // Show spinner until session is determined
+  if (!initialized) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, display: 'flex',
+        alignItems: 'center', justifyContent: 'center', background: 'var(--bg)',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '32px', height: '32px',
+            border: '2.5px solid var(--border)',
+            borderTopColor: 'var(--accent)',
+            borderRadius: '50%',
+            animation: 'spin 0.7s linear infinite',
+            margin: '0 auto 12px',
+          }} />
+          <div style={{ fontSize: '12px', color: 'var(--text3)' }}>กำลังโหลด...</div>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
+
   return (
     <>
-      {/* Responsive styles */}
-      <style>{`
-        .mobile-header-bar { display: none; }
-        .bottom-nav-bar    { display: none; }
-        .desktop-only      { display: inline-flex; }
-        @media (max-width: 768px) {
-          .mobile-header-bar { display: flex !important; }
-          .bottom-nav-bar    { display: flex !important; }
-          .desktop-only      { display: none !important; }
-          .sidebar           { transform: translateX(-100%); }
-          .sidebar.open      { transform: translateX(0); }
-        }
-      `}</style>
-
-      {/* Mobile header */}
+      {/* Mobile header (fixed, always on top) */}
       <MobileHeader />
 
-      {/* Overlay for mobile sidebar */}
+      {/* Overlay when sidebar open on mobile */}
       {sidebarOpen && (
         <div
           style={{
-            position: 'fixed', top: '50px', left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,.4)', zIndex: 39,
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,.45)', zIndex: 48,
           }}
           onClick={() => setSidebarOpen(false)}
         />
@@ -66,7 +103,7 @@ export function AppShell({ children, profile, userId }: AppShellProps) {
 
       <div className="shell">
         <div className={`sidebar${sidebarOpen ? ' open' : ''}`}>
-          <Sidebar profile={profile} />
+          <Sidebar />
         </div>
         <main className="content">
           {children}
@@ -74,7 +111,7 @@ export function AppShell({ children, profile, userId }: AppShellProps) {
       </div>
 
       <BottomNav />
-      <TaskModal userId={userId} />
+      <TaskModal />
     </>
   )
 }

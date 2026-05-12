@@ -1,6 +1,6 @@
 {
-  "name": "TaskFlow",
-  "short_name": "TaskFlow",
+  "name": "KhunMeenFlow",
+  "short_name": "KhunMeenFlow",
   "description": "จัดการงานอย่างมืออาชีพ — Personal Task Manager",
   "start_url": "/dashboard",
   "display": "standalone",
