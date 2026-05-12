@@ -3,14 +3,15 @@ import { useState, useEffect, useRef } from 'react'
 import { useUIStore } from '@/store/uiStore'
 import { useTaskStore } from '@/store/taskStore'
 import { useAuthStore } from '@/store/authStore'
+import type { Task as TaskType } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { gcalCreate, gcalUpdate } from '@/lib/googleCalendar'
 import { PRIORITY_LABEL, RECURRING_LABEL, generateId } from '@/lib/utils'
-import type { Task, Subtask, Priority, RecurringType } from '@/types'
+import type { Subtask, Priority, RecurringType } from '@/types'
 
 export function TaskModal() {
   const { taskModalOpen, editingTaskId, closeTaskModal } = useUIStore()
-  const { tasks, categories } = useTaskStore()
+  const { tasks, categories, upsertTask } = useTaskStore()
   const { userId, profile } = useAuthStore()
   const supabase = createClient()
 
@@ -88,33 +89,44 @@ export function TaskModal() {
         let googleEventId = editingTask.google_event_id
         // Sync to Google Calendar if enabled and deadline is set
         if (syncGcal && taskData.deadline) {
-          const taskForGcal = { ...editingTask, ...taskData, deadline: taskData.deadline } as Task
+          const taskForGcal = { ...editingTask, ...taskData, deadline: taskData.deadline } as TaskType
           if (googleEventId) {
             await gcalUpdate(googleEventId, taskForGcal)
           } else {
             googleEventId = await gcalCreate(taskForGcal)
           }
         }
-        await supabase.from('tasks').update({
-          ...taskData,
-          google_event_id: googleEventId,
-        }).eq('id', editingTask.id)
+        const updatePayload = { ...taskData, google_event_id: googleEventId }
+        await supabase.from('tasks').update(updatePayload).eq('id', editingTask.id)
         taskId = editingTask.id
+
+        // Optimistic update — UI reflects immediately
+        const updatedTask: TaskType = {
+          ...editingTask,
+          ...updatePayload,
+          subtasks,
+          category: categories.find(c => c.id === (taskData.category_id ?? '')) ?? editingTask.category,
+        }
+        upsertTask(updatedTask)
+
         await supabase.from('activity_log').insert({
           user_id: userId, task_id: taskId,
           action: 'updated', task_title: taskData.title,
         })
       } else {
-        const { data } = await supabase.from('tasks').insert(taskData).select().single()
+        const { data } = await supabase.from('tasks').insert(taskData).select('*, category:categories(*), subtasks(*)').single()
         taskId = data?.id
         // Sync to Google Calendar if enabled and deadline is set
         if (syncGcal && taskData.deadline && taskId) {
-          const taskForGcal = { ...taskData, id: taskId, subtasks: [] } as unknown as Task
+          const taskForGcal = { ...taskData, id: taskId, subtasks: [] } as unknown as TaskType
           const eventId = await gcalCreate(taskForGcal)
           if (eventId) {
             await supabase.from('tasks').update({ google_event_id: eventId }).eq('id', taskId)
           }
         }
+        // Optimistic update — add new task to store immediately
+        if (data) upsertTask(data as TaskType)
+
         await supabase.from('activity_log').insert({
           user_id: userId, task_id: taskId,
           action: 'created', task_title: taskData.title,

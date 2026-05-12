@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useUIStore } from '@/store/uiStore'
+import { useTaskStore } from '@/store/taskStore'
 import { useAuthStore } from '@/store/authStore'
 import { gcalUpdate, gcalDelete } from '@/lib/googleCalendar'
 import { formatDeadline, formatTime, getSubtaskProgress, RECURRING_LABEL } from '@/lib/utils'
@@ -20,6 +21,7 @@ const PRIORITY_STYLE = {
 
 export function TaskCard({ task, compact = false }: TaskCardProps) {
   const { openTaskModal } = useUIStore()
+  const { removeTask, upsertTask } = useTaskStore()
   const { userId } = useAuthStore()
   const supabase = createClient()
   const [deleting, setDeleting] = useState(false)
@@ -37,9 +39,14 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
 
   async function toggleDone() {
     const newStatus = isDone ? 'todo' : 'done'
+    const completedAt = newStatus === 'done' ? new Date().toISOString() : null
+
+    // Optimistic update — UI responds instantly
+    upsertTask({ ...task, status: newStatus, completed_at: completedAt })
+
     await supabase.from('tasks').update({
       status: newStatus,
-      completed_at: newStatus === 'done' ? new Date().toISOString() : null,
+      completed_at: completedAt,
     }).eq('id', task.id)
 
     // Sync status change to Google Calendar
@@ -57,22 +64,20 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
 
   async function handleDelete() {
     setDeleting(true)
-    try {
-      // Remove from Google Calendar first
-      if (task.google_event_id) {
-        gcalDelete(task.google_event_id)
-      }
-      if (userId) {
-        await supabase.from('activity_log').insert({
-          user_id: userId, task_id: task.id,
-          action: 'deleted', task_title: task.title,
-        })
-      }
-      await supabase.from('tasks').delete().eq('id', task.id)
-    } finally {
-      setDeleting(false)
-      setConfirmDelete(false)
+    // Optimistic update — remove from UI immediately
+    removeTask(task.id)
+    setConfirmDelete(false)
+
+    // Fire-and-forget background cleanup
+    if (task.google_event_id) gcalDelete(task.google_event_id)
+    if (userId) {
+      supabase.from('activity_log').insert({
+        user_id: userId, task_id: task.id,
+        action: 'deleted', task_title: task.title,
+      })
     }
+    await supabase.from('tasks').delete().eq('id', task.id)
+    setDeleting(false)
   }
 
   return (
