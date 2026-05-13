@@ -138,7 +138,7 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
             )}
           </div>
 
-          {subtaskProgress.total > 0 && (
+          {task.subtasks && task.subtasks.length > 0 && (
             <div style={{ marginTop: '8px' }}>
               {/* Progress bar */}
               <div style={{ height: '3px', background: 'var(--surface2)', borderRadius: '2px', overflow: 'hidden', marginBottom: '6px' }}>
@@ -149,7 +149,7 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
                 }} />
               </div>
               {/* Subtask list — tappable directly */}
-              {(task.subtasks || []).map(st => (
+              {task.subtasks.map(st => (
                 <div
                   key={st.id}
                   style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '3px 0', cursor: 'pointer' }}

@@ -1,7 +1,8 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
 import { useUIStore } from '@/store/uiStore'
-import { formatDeadline } from '@/lib/utils'
+import { useTaskStore } from '@/store/taskStore'
+import { formatDeadline, getSubtaskProgress } from '@/lib/utils'
 import type { Task } from '@/types'
 
 interface KanbanViewProps {
@@ -82,7 +83,12 @@ export function KanbanView({ tasks }: KanbanViewProps) {
 function KanbanCard({ task, onEdit, onMove, isFirst, isLast }: {
   task: Task; onEdit: () => void; onMove: (id: string, status: string) => void; isFirst: boolean; isLast: boolean
 }) {
+  const supabase = createClient()
+  const { updateSubtasks } = useTaskStore()
   const { label: deadlineLabel, status: deadlineStatus } = formatDeadline(task.deadline)
+  const subtasks = task.subtasks || []
+  const subtaskProgress = getSubtaskProgress(subtasks)
+
   const PRIO = {
     high:   { bg: 'var(--red-bg)',    color: 'var(--red)',    label: 'สูง' },
     medium: { bg: 'var(--orange-bg)', color: 'var(--orange)', label: 'กลาง' },
@@ -101,6 +107,13 @@ function KanbanCard({ task, onEdit, onMove, isFirst, isLast }: {
     if (next) await onMove(task.id, next)
   }
 
+  async function toggleSubtaskDone(subtaskId: string) {
+    const updated = subtasks.map(s => s.id === subtaskId ? { ...s, done: !s.done } : s)
+    updateSubtasks(task.id, updated)
+    const sub = subtasks.find(s => s.id === subtaskId)
+    if (sub) await supabase.from('subtasks').update({ done: !sub.done }).eq('id', subtaskId)
+  }
+
   return (
     <div style={{
       background: 'var(--surface)', border: '1px solid var(--border)',
@@ -112,17 +125,50 @@ function KanbanCard({ task, onEdit, onMove, isFirst, isLast }: {
       onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)'}
       onClick={onEdit}
     >
-      <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '5px', lineHeight: 1.4, wordBreak: 'break-word', paddingRight: '8px', textDecoration: task.status === 'done' ? 'line-through' : 'none' }}>
+      <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '5px', lineHeight: 1.4, wordBreak: 'break-word', textDecoration: task.status === 'done' ? 'line-through' : 'none' }}>
         {task.title}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginBottom: '7px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginBottom: subtasks.length > 0 ? '8px' : '7px' }}>
         <span className="badge" style={{ background: prio.bg, color: prio.color }}>{prio.label}</span>
         {task.category && <span className="badge" style={{ background: task.category.bg_color, color: task.category.color }}>{task.category.name}</span>}
         {deadlineLabel && <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: deadlineStatus === 'overdue' ? 'var(--red)' : 'var(--text3)' }}>📅 {deadlineLabel}</span>}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', borderTop: '1px solid var(--border)', paddingTop: '7px' }} onClick={e => e.stopPropagation()}>
+
+      {/* Subtasks */}
+      {subtasks.length > 0 && (
+        <div style={{ marginBottom: '8px' }} onClick={e => e.stopPropagation()}>
+          {/* Progress bar */}
+          <div style={{ height: '2px', background: 'var(--surface2)', borderRadius: '2px', overflow: 'hidden', marginBottom: '5px' }}>
+            <div style={{
+              height: '100%', borderRadius: '2px',
+              background: subtaskProgress.pct === 100 ? 'var(--green)' : 'var(--accent)',
+              width: `${subtaskProgress.pct}%`, transition: 'width .3s ease',
+            }} />
+          </div>
+          {subtasks.map(st => (
+            <div
+              key={st.id}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0', cursor: 'pointer' }}
+              onClick={() => toggleSubtaskDone(st.id)}
+            >
+              <div
+                className={`task-check${st.done ? ' checked' : ''}`}
+                style={{ width: '14px', height: '14px', borderRadius: '3px', flexShrink: 0, marginTop: 0 }}
+              />
+              <span style={{
+                fontSize: '11px',
+                color: st.done ? 'var(--text3)' : 'var(--text2)',
+                textDecoration: st.done ? 'line-through' : 'none',
+              }}>{st.title}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderTop: '1px solid var(--border)', paddingTop: '7px' }} onClick={e => e.stopPropagation()}>
         <button onClick={moveLeft} disabled={isFirst} style={{ width: '24px', height: '24px', border: 'none', background: 'transparent', cursor: isFirst ? 'not-allowed' : 'pointer', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isFirst ? 'var(--surface2)' : 'var(--text3)', fontSize: '12px' }} title="ย้ายซ้าย">◀</button>
         <div style={{ flex: 1 }} />
+        <button onClick={onEdit} style={{ width: '24px', height: '24px', border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text3)', fontSize: '12px' }} title="แก้ไข">✏️</button>
         <button onClick={moveRight} disabled={isLast} style={{ width: '24px', height: '24px', border: 'none', background: 'transparent', cursor: isLast ? 'not-allowed' : 'pointer', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isLast ? 'var(--surface2)' : 'var(--text3)', fontSize: '12px' }} title="ย้ายขวา">▶</button>
       </div>
     </div>
