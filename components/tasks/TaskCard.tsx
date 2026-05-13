@@ -21,7 +21,7 @@ const PRIORITY_STYLE = {
 
 export function TaskCard({ task, compact = false }: TaskCardProps) {
   const { openTaskModal } = useUIStore()
-  const { removeTask, upsertTask } = useTaskStore()
+  const { removeTask, upsertTask, updateSubtasks } = useTaskStore()
   const { userId } = useAuthStore()
   const supabase = createClient()
   const [deleting, setDeleting] = useState(false)
@@ -60,6 +60,16 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
         action: 'completed', task_title: task.title,
       })
     }
+  }
+
+  async function toggleSubtaskDone(subtaskId: string) {
+    const subtasks = task.subtasks || []
+    const updated = subtasks.map(s => s.id === subtaskId ? { ...s, done: !s.done } : s)
+    // Optimistic update
+    updateSubtasks(task.id, updated)
+    // Persist to Supabase
+    const sub = subtasks.find(s => s.id === subtaskId)
+    if (sub) await supabase.from('subtasks').update({ done: !sub.done }).eq('id', subtaskId)
   }
 
   async function handleDelete() {
@@ -130,17 +140,32 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
 
           {subtaskProgress.total > 0 && (
             <div style={{ marginTop: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Sub-tasks {subtaskProgress.done}/{subtaskProgress.total}</span>
-                <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{subtaskProgress.pct}%</span>
-              </div>
-              <div style={{ height: '3px', background: 'var(--surface2)', borderRadius: '2px', overflow: 'hidden' }}>
+              {/* Progress bar */}
+              <div style={{ height: '3px', background: 'var(--surface2)', borderRadius: '2px', overflow: 'hidden', marginBottom: '6px' }}>
                 <div style={{
                   height: '100%', borderRadius: '2px',
                   background: subtaskProgress.pct === 100 ? 'var(--green)' : 'var(--accent)',
-                  width: `${subtaskProgress.pct}%`, transition: 'width .5s ease',
+                  width: `${subtaskProgress.pct}%`, transition: 'width .3s ease',
                 }} />
               </div>
+              {/* Subtask list — tappable directly */}
+              {(task.subtasks || []).map(st => (
+                <div
+                  key={st.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '3px 0', cursor: 'pointer' }}
+                  onClick={e => { e.stopPropagation(); toggleSubtaskDone(st.id) }}
+                >
+                  <div
+                    className={`task-check${st.done ? ' checked' : ''}`}
+                    style={{ width: '16px', height: '16px', borderRadius: '3px', flexShrink: 0, marginTop: 0 }}
+                  />
+                  <span style={{
+                    fontSize: '12px',
+                    color: st.done ? 'var(--text3)' : 'var(--text2)',
+                    textDecoration: st.done ? 'line-through' : 'none',
+                  }}>{st.title}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>

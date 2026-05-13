@@ -90,19 +90,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile header (fixed, always on top) */}
       <MobileHeader />
 
-      {/* Overlay when sidebar open on mobile */}
-      {sidebarOpen && (
-        <div
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,.45)', zIndex: 48,
-          }}
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
       <div className="shell">
         <Sidebar />
+        {/* Overlay inside shell so its z-index is in the same stacking context as the sidebar */}
+        {sidebarOpen && (
+          <div
+            style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'rgba(0,0,0,.45)', zIndex: 48,
+            }}
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         <main className="content">
           {children}
         </main>

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useUIStore } from '@/store/uiStore'
 import { useTaskStore } from '@/store/taskStore'
 import { useAuthStore } from '@/store/authStore'
@@ -27,8 +27,24 @@ export function TaskModal() {
   const [newSubtask, setNewSubtask] = useState('')
   const [saving, setSaving]         = useState(false)
   const [syncGcal, setSyncGcal]     = useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(false)
 
   const titleRef = useRef<HTMLInputElement>(null)
+
+  // Unique task titles for autocomplete (exclude current editing title)
+  const titleSuggestions = useMemo(() => {
+    if (!title.trim()) return []
+    const q = title.toLowerCase()
+    const seen = new Set<string>()
+    return tasks
+      .map(t => t.title)
+      .filter(t => {
+        if (seen.has(t)) return false
+        seen.add(t)
+        return t.toLowerCase().includes(q) && t.toLowerCase() !== q
+      })
+      .slice(0, 6)
+  }, [title, tasks])
 
   const gcalEnabled = profile?.settings?.googleCalendarSync ?? false
 
@@ -162,9 +178,46 @@ export function TaskModal() {
           {editingTask ? 'แก้ไขงาน' : 'เพิ่มงานใหม่'}
         </div>
 
-        <div className="field">
+        <div className="field" style={{ position: 'relative' }}>
           <label>ชื่องาน *</label>
-          <input ref={titleRef} type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="เช่น ส่งรายงานประจำเดือน" />
+          <input
+            ref={titleRef}
+            type="text"
+            value={title}
+            onChange={e => { setTitle(e.target.value); setShowSuggestions(true) }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+            placeholder="เช่น ส่งรายงานประจำเดือน"
+            autoComplete="off"
+          />
+          {showSuggestions && titleSuggestions.length > 0 && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, right: 0,
+              background: 'var(--surface)', border: '1px solid var(--border)',
+              borderRadius: 'var(--r)', boxShadow: '0 4px 16px rgba(0,0,0,.1)',
+              zIndex: 10, overflow: 'hidden', marginTop: '2px',
+            }}>
+              {titleSuggestions.map((s, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onMouseDown={() => { setTitle(s); setShowSuggestions(false) }}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '8px 12px', border: 'none',
+                    background: 'transparent', cursor: 'pointer',
+                    fontFamily: 'var(--font)', fontSize: '13px',
+                    color: 'var(--text2)',
+                    borderBottom: i < titleSuggestions.length - 1 ? '1px solid var(--border)' : 'none',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="field">
