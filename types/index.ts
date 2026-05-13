@@ -91,6 +91,7 @@ export interface TaskFilter {
   priority: Priority | 'all'
   categoryId: string | 'all'
   search: string
+  dateFilter: 'all' | 'today' | 'this_week' | 'this_month'
 }
 
 // Stats

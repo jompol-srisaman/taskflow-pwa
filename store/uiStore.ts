@@ -36,6 +36,7 @@ const defaultFilter: TaskFilter = {
   priority: 'all',
   categoryId: 'all',
   search: '',
+  dateFilter: 'all',
 }
 
 export const useUIStore = create<UIState>()(

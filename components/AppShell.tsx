@@ -102,9 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="shell">
-        <div className={`sidebar${sidebarOpen ? ' open' : ''}`}>
-          <Sidebar />
-        </div>
+        <Sidebar />
         <main className="content">
           {children}
         </main>
