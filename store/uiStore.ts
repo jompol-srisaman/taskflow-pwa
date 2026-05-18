@@ -8,6 +8,9 @@ interface UIState {
   theme: ThemeType
   accent: AccentColor
   fontSize: FontSize
+  // App settings
+  name: string
+  gcalSync: boolean
   // View
   viewMode: ViewMode
   currentPage: string
@@ -21,6 +24,8 @@ interface UIState {
   setTheme: (t: ThemeType) => void
   setAccent: (a: AccentColor) => void
   setFontSize: (f: FontSize) => void
+  setName: (n: string) => void
+  setGcalSync: (v: boolean) => void
   setViewMode: (v: ViewMode) => void
   setCurrentPage: (p: string) => void
   setSidebarOpen: (open: boolean) => void
@@ -45,6 +50,8 @@ export const useUIStore = create<UIState>()(
       theme: 'light',
       accent: 'black',
       fontSize: 'md',
+      name: 'ผู้ใช้',
+      gcalSync: false,
       viewMode: 'list',
       currentPage: 'dashboard',
       sidebarOpen: false,
@@ -55,6 +62,8 @@ export const useUIStore = create<UIState>()(
       setTheme: (theme) => set({ theme }),
       setAccent: (accent) => set({ accent }),
       setFontSize: (fontSize) => set({ fontSize }),
+      setName: (name) => set({ name }),
+      setGcalSync: (gcalSync) => set({ gcalSync }),
       setViewMode: (viewMode) => set({ viewMode }),
       setCurrentPage: (currentPage) => set({ currentPage }),
       setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
@@ -66,7 +75,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'taskflow-ui',
-      partialize: (s) => ({ theme: s.theme, accent: s.accent, fontSize: s.fontSize, viewMode: s.viewMode }),
+      partialize: (s) => ({ theme: s.theme, accent: s.accent, fontSize: s.fontSize, viewMode: s.viewMode, name: s.name, gcalSync: s.gcalSync }),
     }
   )
 )

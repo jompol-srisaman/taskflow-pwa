@@ -1,83 +1,68 @@
-'use client'
-import { createClient } from '@/lib/supabase/client'
+import { getCalendarClient, CALENDAR_ID } from '@/lib/sheets'
 import type { Task } from '@/types'
 
-const GCAL = 'https://www.googleapis.com/calendar/v3'
-
-// Priority → Google Calendar color (11=tomato, 6=banana, 1=lavender, 8=graphite)
 const PRIO_COLOR: Record<string, string> = { high: '11', medium: '6', low: '1' }
-
-export async function getProviderToken(): Promise<string | null> {
-  const supabase = createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  return session?.provider_token ?? null
-}
 
 function buildEvent(task: Task) {
   const date = task.deadline!.substring(0, 10)
-  // All-day event: end = next day
+  const colorId = task.status === 'done' ? '8' : (PRIO_COLOR[task.priority] ?? '1')
+
+  if (task.start_time) {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    return {
+      summary: task.title,
+      description: task.note || undefined,
+      start: { dateTime: `${date}T${task.start_time}:00`, timeZone: tz },
+      end: { dateTime: `${date}T${task.end_time || task.start_time}:00`, timeZone: tz },
+      colorId,
+    }
+  }
+
   const nextDay = new Date(date)
   nextDay.setDate(nextDay.getDate() + 1)
-  const endDate = nextDay.toISOString().substring(0, 10)
-
   return {
     summary: task.title,
-    description: task.note ? task.note : undefined,
+    description: task.note || undefined,
     start: { date },
-    end: { date: endDate },
-    colorId: task.status === 'done' ? '8' : (PRIO_COLOR[task.priority] ?? '1'),
+    end: { date: nextDay.toISOString().substring(0, 10) },
+    colorId,
   }
 }
 
-/** Create event → return Google event id, or null on failure */
 export async function gcalCreate(task: Task): Promise<string | null> {
   if (!task.deadline) return null
-  const token = await getProviderToken()
-  if (!token) return null
-
   try {
-    const res = await fetch(`${GCAL}/calendars/primary/events`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildEvent(task)),
+    const cal = getCalendarClient()
+    const res = await cal.events.insert({
+      calendarId: CALENDAR_ID,
+      requestBody: buildEvent(task),
     })
-    if (!res.ok) return null
-    const data = await res.json()
-    return data.id as string
+    return res.data.id ?? null
   } catch {
     return null
   }
 }
 
-/** Update existing event (noop if eventId missing or no deadline) */
 export async function gcalUpdate(eventId: string, task: Task): Promise<boolean> {
   if (!task.deadline) return false
-  const token = await getProviderToken()
-  if (!token) return false
-
   try {
-    const res = await fetch(`${GCAL}/calendars/primary/events/${eventId}`, {
-      method: 'PATCH',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildEvent(task)),
+    const cal = getCalendarClient()
+    await cal.events.patch({
+      calendarId: CALENDAR_ID,
+      eventId,
+      requestBody: buildEvent(task),
     })
-    return res.ok
+    return true
   } catch {
     return false
   }
 }
 
-/** Delete event */
 export async function gcalDelete(eventId: string): Promise<boolean> {
-  const token = await getProviderToken()
-  if (!token) return false
-
   try {
-    const res = await fetch(`${GCAL}/calendars/primary/events/${eventId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
-    return res.status === 204 || res.ok
+    const cal = getCalendarClient()
+    await cal.events.delete({ calendarId: CALENDAR_ID, eventId })
+    return true
   } catch {
     return false
   }
@@ -93,38 +78,28 @@ export interface GCalEvent {
   end: { date?: string; dateTime?: string }
 }
 
-/** Fetch events for a time range (ISO strings) */
 export async function gcalFetch(timeMin: string, timeMax: string): Promise<GCalEvent[]> {
-  const token = await getProviderToken()
-  if (!token) return []
-
   try {
-    const params = new URLSearchParams({
-      timeMin, timeMax,
-      singleEvents: 'true',
+    const cal = getCalendarClient()
+    const res = await cal.events.list({
+      calendarId: CALENDAR_ID,
+      timeMin,
+      timeMax,
+      singleEvents: true,
       orderBy: 'startTime',
-      maxResults: '200',
+      maxResults: 200,
     })
-    const res = await fetch(`${GCAL}/calendars/primary/events?${params}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
-    if (!res.ok) return []
-    const data = await res.json()
-    return (data.items ?? []) as GCalEvent[]
+    return (res.data.items ?? []) as GCalEvent[]
   } catch {
     return []
   }
 }
 
-/** Check if token is valid (lightweight ping) */
 export async function gcalIsConnected(): Promise<boolean> {
-  const token = await getProviderToken()
-  if (!token) return false
   try {
-    const res = await fetch(`${GCAL}/users/me/calendarList/primary`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
-    return res.ok
+    const cal = getCalendarClient()
+    await cal.calendarList.get({ calendarId: CALENDAR_ID })
+    return true
   } catch {
     return false
   }

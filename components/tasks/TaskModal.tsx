@@ -2,18 +2,18 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useUIStore } from '@/store/uiStore'
 import { useTaskStore } from '@/store/taskStore'
-import { useAuthStore } from '@/store/authStore'
 import type { Task as TaskType } from '@/types'
-import { createClient } from '@/lib/supabase/client'
-import { gcalCreate, gcalUpdate } from '@/lib/googleCalendar'
+import { createTask, updateTask } from '@/app/actions/tasks'
 import { PRIORITY_LABEL, RECURRING_LABEL, generateId } from '@/lib/utils'
 import type { Subtask, Priority, RecurringType } from '@/types'
 
-export function TaskModal() {
-  const { taskModalOpen, editingTaskId, closeTaskModal } = useUIStore()
+interface Props {
+  onSaved: () => Promise<void>
+}
+
+export function TaskModal({ onSaved }: Props) {
+  const { taskModalOpen, editingTaskId, closeTaskModal, gcalSync: gcalEnabled } = useUIStore()
   const { tasks, categories, upsertTask } = useTaskStore()
-  const { userId, profile } = useAuthStore()
-  const supabase = createClient()
 
   const editingTask = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null
 
@@ -22,6 +22,8 @@ export function TaskModal() {
   const [categoryId, setCategoryId] = useState('')
   const [priority, setPriority]     = useState<Priority>('medium')
   const [deadline, setDeadline]     = useState('')
+  const [startTime, setStartTime]   = useState('')
+  const [endTime, setEndTime]       = useState('')
   const [recurring, setRecurring]   = useState<RecurringType>('')
   const [subtasks, setSubtasks]     = useState<Subtask[]>([])
   const [newSubtask, setNewSubtask] = useState('')
@@ -31,7 +33,6 @@ export function TaskModal() {
 
   const titleRef = useRef<HTMLInputElement>(null)
 
-  // Unique task titles for autocomplete (exclude current editing title)
   const titleSuggestions = useMemo(() => {
     if (!title.trim()) return []
     const q = title.toLowerCase()
@@ -46,8 +47,6 @@ export function TaskModal() {
       .slice(0, 6)
   }, [title, tasks])
 
-  const gcalEnabled = profile?.settings?.googleCalendarSync ?? false
-
   useEffect(() => {
     if (taskModalOpen) {
       if (editingTask) {
@@ -56,6 +55,8 @@ export function TaskModal() {
         setCategoryId(editingTask.category_id || '')
         setPriority(editingTask.priority)
         setDeadline(editingTask.deadline || '')
+        setStartTime(editingTask.start_time || '')
+        setEndTime(editingTask.end_time || '')
         setRecurring(editingTask.recurring)
         setSubtasks(editingTask.subtasks || [])
         setSyncGcal(!!editingTask.google_event_id || gcalEnabled)
@@ -65,6 +66,8 @@ export function TaskModal() {
         setCategoryId(categories[0]?.id || '')
         setPriority('medium')
         setDeadline('')
+        setStartTime('')
+        setEndTime('')
         setRecurring('')
         setSubtasks([])
         setSyncGcal(gcalEnabled)
@@ -90,74 +93,36 @@ export function TaskModal() {
 
   async function handleSave() {
     if (!title.trim()) { titleRef.current?.focus(); return }
-    if (!userId) return
     setSaving(true)
     try {
       const taskData = {
         title: title.trim(), note: note.trim(),
         category_id: categoryId || null,
         priority, deadline: deadline || null,
-        recurring, user_id: userId,
+        start_time: startTime || null,
+        end_time: endTime || null,
+        recurring,
       }
-      let taskId = editingTaskId
 
       if (editingTask) {
-        let googleEventId = editingTask.google_event_id
-        // Sync to Google Calendar if enabled and deadline is set
-        if (syncGcal && taskData.deadline) {
-          const taskForGcal = { ...editingTask, ...taskData, deadline: taskData.deadline } as TaskType
-          if (googleEventId) {
-            await gcalUpdate(googleEventId, taskForGcal)
-          } else {
-            googleEventId = await gcalCreate(taskForGcal)
-          }
-        }
-        const updatePayload = { ...taskData, google_event_id: googleEventId }
-        await supabase.from('tasks').update(updatePayload).eq('id', editingTask.id)
-        taskId = editingTask.id
-
-        // Optimistic update — UI reflects immediately
-        const updatedTask: TaskType = {
-          ...editingTask,
-          ...updatePayload,
+        const saved = await updateTask(editingTask, taskData, syncGcal, subtasks)
+        upsertTask({
+          ...saved,
+          category: categories.find(c => c.id === (saved.category_id ?? '')) ?? editingTask.category,
           subtasks,
-          category: categories.find(c => c.id === (taskData.category_id ?? '')) ?? editingTask.category,
-        }
-        upsertTask(updatedTask)
-
-        await supabase.from('activity_log').insert({
-          user_id: userId, task_id: taskId,
-          action: 'updated', task_title: taskData.title,
         })
       } else {
-        const { data } = await supabase.from('tasks').insert(taskData).select('*, category:categories(*), subtasks(*)').single()
-        taskId = data?.id
-        // Sync to Google Calendar if enabled and deadline is set
-        if (syncGcal && taskData.deadline && taskId) {
-          const taskForGcal = { ...taskData, id: taskId, subtasks: [] } as unknown as TaskType
-          const eventId = await gcalCreate(taskForGcal)
-          if (eventId) {
-            await supabase.from('tasks').update({ google_event_id: eventId }).eq('id', taskId)
-          }
-        }
-        // Optimistic update — add new task to store immediately
-        if (data) upsertTask(data as TaskType)
-
-        await supabase.from('activity_log').insert({
-          user_id: userId, task_id: taskId,
-          action: 'created', task_title: taskData.title,
+        const saved = await createTask(taskData, syncGcal, subtasks)
+        upsertTask({
+          ...saved,
+          category: categories.find(c => c.id === (saved.category_id ?? '')),
+          subtasks,
         })
       }
 
-      if (taskId) {
-        await supabase.from('subtasks').delete().eq('task_id', taskId)
-        if (subtasks.length > 0) {
-          await supabase.from('subtasks').insert(
-            subtasks.map((s, i) => ({ title: s.title, done: s.done, task_id: taskId!, sort_order: i }))
-          )
-        }
-      }
       closeTaskModal()
+      // Background refresh to sync any server-side changes
+      onSaved()
     } finally {
       setSaving(false)
     }
@@ -244,7 +209,7 @@ export function TaskModal() {
         <div className="field-row">
           <div className="field">
             <label>Deadline</label>
-            <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
+            <input type="date" value={deadline} onChange={e => { setDeadline(e.target.value); if (!e.target.value) { setStartTime(''); setEndTime('') } }} />
           </div>
           <div className="field">
             <label>งานซ้ำ (Recurring)</label>
@@ -254,7 +219,19 @@ export function TaskModal() {
           </div>
         </div>
 
-        {/* Google Calendar sync toggle */}
+        {deadline && (
+          <div className="field-row">
+            <div className="field">
+              <label>เวลาเริ่ม</label>
+              <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>เวลาสิ้นสุด</label>
+              <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+            </div>
+          </div>
+        )}
+
         {deadline && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'var(--surface2)', borderRadius: 'var(--r)', border: '1px solid var(--border)', marginBottom: '4px' }}>
             <div

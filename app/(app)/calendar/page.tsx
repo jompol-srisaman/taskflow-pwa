@@ -2,7 +2,8 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useTaskStore } from '@/store/taskStore'
 import { useUIStore } from '@/store/uiStore'
-import { gcalFetch, gcalIsConnected, type GCalEvent } from '@/lib/googleCalendar'
+import { fetchCalendarEvents, checkCalendarConnection } from '@/app/actions/calendar'
+import type { GCalEvent } from '@/lib/googleCalendar'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, isSameDay, parseISO, addMonths, subMonths, isAfter, startOfDay } from 'date-fns'
 import { th } from 'date-fns/locale'
 import type { Task } from '@/types'
@@ -26,16 +27,15 @@ export default function CalendarPage() {
   useEffect(() => {
     async function loadGcal() {
       setGcalConnected(null)
-      const connected = await gcalIsConnected()
+      const connected = await checkCalendarConnection()
       setGcalConnected(connected)
       if (!connected) { setGcalEvents([]); return }
 
       const start = startOfMonth(currentMonth)
       const end   = endOfMonth(currentMonth)
-      // Extend by a day on each side for timezone safety
       start.setDate(start.getDate() - 1)
       end.setDate(end.getDate() + 1)
-      const events = await gcalFetch(start.toISOString(), end.toISOString())
+      const events = await fetchCalendarEvents(start.toISOString(), end.toISOString())
       setGcalEvents(events)
     }
     loadGcal()
@@ -139,7 +139,7 @@ export default function CalendarPage() {
           display: 'flex', alignItems: 'center', gap: '8px',
         }}>
           <GoogleIcon />
-          <span>Google Calendar ยังไม่ได้เชื่อมต่อ — ออกจากระบบแล้วเข้าใหม่เพื่อให้สิทธิ์ได้เลย</span>
+          <span>Google Calendar ยังไม่ได้เชื่อมต่อ — ตรวจสอบว่า Service Account มีสิทธิ์เข้าถึง Calendar แล้ว</span>
         </div>
       )}
       {gcalConnected === true && showGcal && (

@@ -1,10 +1,8 @@
 'use client'
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useUIStore } from '@/store/uiStore'
 import { useTaskStore } from '@/store/taskStore'
-import { useAuthStore } from '@/store/authStore'
-import { gcalUpdate, gcalDelete } from '@/lib/googleCalendar'
+import { toggleTaskDone, deleteTask, updateSubtaskDone } from '@/app/actions/tasks'
 import { formatDeadline, formatTime, getSubtaskProgress, RECURRING_LABEL } from '@/lib/utils'
 import type { Task } from '@/types'
 
@@ -22,8 +20,6 @@ const PRIORITY_STYLE = {
 export function TaskCard({ task, compact = false }: TaskCardProps) {
   const { openTaskModal } = useUIStore()
   const { removeTask, upsertTask, updateSubtasks } = useTaskStore()
-  const { userId } = useAuthStore()
-  const supabase = createClient()
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -38,55 +34,24 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
   })
 
   async function toggleDone() {
-    const newStatus = isDone ? 'todo' : 'done'
-    const completedAt = newStatus === 'done' ? new Date().toISOString() : null
-
-    // Optimistic update — UI responds instantly
-    upsertTask({ ...task, status: newStatus, completed_at: completedAt })
-
-    await supabase.from('tasks').update({
-      status: newStatus,
-      completed_at: completedAt,
-    }).eq('id', task.id)
-
-    // Sync status change to Google Calendar
-    if (task.google_event_id && task.deadline) {
-      gcalUpdate(task.google_event_id, { ...task, status: newStatus })
-    }
-
-    if (newStatus === 'done' && userId) {
-      await supabase.from('activity_log').insert({
-        user_id: userId, task_id: task.id,
-        action: 'completed', task_title: task.title,
-      })
-    }
+    const updates = await toggleTaskDone(task)
+    upsertTask({ ...task, ...updates })
   }
 
   async function toggleSubtaskDone(subtaskId: string) {
     const subtasks = task.subtasks || []
-    const updated = subtasks.map(s => s.id === subtaskId ? { ...s, done: !s.done } : s)
-    // Optimistic update
-    updateSubtasks(task.id, updated)
-    // Persist to Supabase
     const sub = subtasks.find(s => s.id === subtaskId)
-    if (sub) await supabase.from('subtasks').update({ done: !sub.done }).eq('id', subtaskId)
+    if (!sub) return
+    const updated = subtasks.map(s => s.id === subtaskId ? { ...s, done: !s.done } : s)
+    updateSubtasks(task.id, updated)
+    await updateSubtaskDone(subtaskId, !sub.done)
   }
 
   async function handleDelete() {
     setDeleting(true)
-    // Optimistic update — remove from UI immediately
     removeTask(task.id)
     setConfirmDelete(false)
-
-    // Fire-and-forget background cleanup
-    if (task.google_event_id) gcalDelete(task.google_event_id)
-    if (userId) {
-      supabase.from('activity_log').insert({
-        user_id: userId, task_id: task.id,
-        action: 'deleted', task_title: task.title,
-      })
-    }
-    await supabase.from('tasks').delete().eq('id', task.id)
+    await deleteTask(task)
     setDeleting(false)
   }
 

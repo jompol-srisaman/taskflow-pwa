@@ -34,6 +34,8 @@ export interface Task {
   priority: Priority
   status: TaskStatus
   deadline: string | null
+  start_time: string | null
+  end_time: string | null
   recurring: RecurringType
   total_time_seconds: number
   timer_started_at: string | null

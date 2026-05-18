@@ -1,16 +1,12 @@
 'use client'
 import { useUIStore } from '@/store/uiStore'
 import { useTaskStore } from '@/store/taskStore'
-import { useAuthStore } from '@/store/authStore'
-import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
 export function Sidebar() {
-  const { currentPage, setCurrentPage, sidebarOpen, setSidebarOpen } = useUIStore()
+  const { currentPage, setCurrentPage, sidebarOpen, setSidebarOpen, name } = useUIStore()
   const { tasks, categories } = useTaskStore()
-  const { profile } = useAuthStore()
   const router = useRouter()
-  const supabase = createClient()
 
   function navTo(page: string, url?: string) {
     setCurrentPage(page)
@@ -29,12 +25,7 @@ export function Sidebar() {
     return diff >= 0 && diff <= 3
   }).length
 
-  async function handleSignOut() {
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
-
-  const initials = profile?.name ? profile.name[0].toUpperCase() : 'ฉ'
+  const initials = name ? name[0].toUpperCase() : 'ฉ'
 
   return (
     <aside className={`sidebar${sidebarOpen ? ' open' : ''}`} id="sidebar">
@@ -105,39 +96,20 @@ export function Sidebar() {
 
       {/* Footer / User */}
       <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{
             width: '28px', height: '28px', borderRadius: '50%',
-            background: 'var(--surface2)', border: '1px solid var(--border)',
+            background: 'var(--accent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '12px', fontWeight: 600, flexShrink: 0, overflow: 'hidden',
+            fontSize: '12px', fontWeight: 600, color: 'var(--surface)', flexShrink: 0,
           }}>
-            {profile?.avatar_url
-              ? <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : initials}
+            {initials}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '13px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile?.name || 'ผู้ใช้'}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text3)' }}>Admin</div>
+            <div style={{ fontSize: '13px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name || 'ผู้ใช้'}</div>
+            <div style={{ fontSize: '11px', color: 'var(--text3)' }}>Personal</div>
           </div>
         </div>
-        <button onClick={handleSignOut} style={{
-          width: '100%', padding: '8px 12px',
-          background: 'transparent', border: '1px solid var(--border)',
-          borderRadius: 'var(--r)', cursor: 'pointer',
-          fontFamily: 'var(--font)', fontSize: '13px',
-          color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '8px',
-          transition: 'all 0.12s',
-          WebkitTapHighlightColor: 'transparent',
-        }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--red-bg)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
-            <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M10 11l3-3-3-3M13 8H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-          </svg>
-          ออกจากระบบ
-        </button>
       </div>
     </aside>
   )

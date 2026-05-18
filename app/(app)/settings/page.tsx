@@ -2,9 +2,9 @@
 import { useState, useEffect } from 'react'
 import { useUIStore } from '@/store/uiStore'
 import { useTaskStore } from '@/store/taskStore'
-import { useAuthStore } from '@/store/authStore'
-import { createClient } from '@/lib/supabase/client'
-import { gcalIsConnected } from '@/lib/googleCalendar'
+import { createCategory, deleteCategory } from '@/app/actions/categories'
+import { checkCalendarConnection } from '@/app/actions/calendar'
+import { fetchAllData } from '@/app/actions/tasks'
 import type { ThemeType, AccentColor, FontSize } from '@/types'
 
 const ACCENT_OPTIONS: { value: AccentColor; color: string }[] = [
@@ -17,66 +17,45 @@ const ACCENT_OPTIONS: { value: AccentColor; color: string }[] = [
 ]
 
 export default function SettingsPage() {
-  const { theme, accent, fontSize, setTheme, setAccent, setFontSize } = useUIStore()
-  const { categories } = useTaskStore()
-  const { userId, profile, setAuth } = useAuthStore()
-  const supabase = createClient()
+  const { theme, accent, fontSize, name, gcalSync, setTheme, setAccent, setFontSize, setName, setGcalSync } = useUIStore()
+  const { categories, setCategories } = useTaskStore()
 
-  const [name, setName] = useState(profile?.name || '')
-  const [saving, setSaving] = useState(false)
+  const [nameInput, setNameInput]   = useState(name)
   const [newCatName, setNewCatName] = useState('')
   const [newCatColor, setNewCatColor] = useState('#6B6760')
-  const [gcalSync, setGcalSync] = useState(profile?.settings?.googleCalendarSync ?? false)
   const [gcalConnected, setGcalConnected] = useState<boolean | null>(null)
   const [gcalTesting, setGcalTesting] = useState(false)
 
-  useEffect(() => {
-    if (profile?.name) setName(profile.name)
-    if (profile?.settings?.googleCalendarSync !== undefined) setGcalSync(profile.settings.googleCalendarSync)
-  }, [profile])
+  useEffect(() => { setNameInput(name) }, [name])
 
   async function testGcalConnection() {
     setGcalTesting(true)
-    const ok = await gcalIsConnected()
+    const ok = await checkCalendarConnection()
     setGcalConnected(ok)
     setGcalTesting(false)
   }
 
-  async function saveGcalSync(enabled: boolean) {
-    if (!userId || !profile) return
-    setGcalSync(enabled)
-    const newSettings = { ...profile.settings, googleCalendarSync: enabled }
-    await supabase.from('profiles').update({ settings: newSettings }).eq('id', userId)
-    setAuth(userId, { ...profile, settings: newSettings })
-  }
-
-  async function saveProfile() {
-    if (!userId) return
-    setSaving(true)
-    await supabase.from('profiles').update({ name }).eq('id', userId)
-    // Update local store
-    if (profile) setAuth(userId, { ...profile, name })
-    setSaving(false)
-  }
-
   async function addCategory() {
-    if (!newCatName.trim() || !userId) return
-    await supabase.from('categories').insert({
-      user_id: userId,
+    if (!newCatName.trim()) return
+    await createCategory({
       name: newCatName.trim(),
       color: newCatColor,
       bg_color: `${newCatColor}22`,
-      is_preset: false,
       sort_order: categories.length,
     })
     setNewCatName('')
+    // Refresh categories
+    const { categories: refreshed } = await fetchAllData()
+    setCategories(refreshed)
   }
 
-  async function deleteCategory(id: string) {
+  async function handleDeleteCategory(id: string) {
     const cat = categories.find(c => c.id === id)
     if (!cat || cat.is_preset) return
     if (!confirm(`ลบกลุ่ม "${cat.name}"?`)) return
-    await supabase.from('categories').delete().eq('id', id)
+    await deleteCategory(id)
+    const { categories: refreshed } = await fetchAllData()
+    setCategories(refreshed)
   }
 
   return (
@@ -92,11 +71,11 @@ export default function SettingsPage() {
           <SettingRow label="ชื่อผู้ใช้" sub="แสดงใน Sidebar">
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <input
-                type="text" value={name} onChange={e => setName(e.target.value)}
+                type="text" value={nameInput} onChange={e => setNameInput(e.target.value)}
                 style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r)', fontFamily: 'var(--font)', fontSize: '13px', color: 'var(--text)', background: 'var(--surface)', width: '160px' }}
               />
-              <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={saveProfile} disabled={saving}>
-                {saving ? '...' : 'บันทึก'}
+              <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => setName(nameInput)}>
+                บันทึก
               </button>
             </div>
           </SettingRow>
@@ -154,7 +133,7 @@ export default function SettingsPage() {
               <span style={{ fontSize: '13px', flex: 1 }}>{c.name}</span>
               {c.is_preset && <span style={{ fontSize: '11px', color: 'var(--text3)' }}>preset</span>}
               {!c.is_preset && (
-                <button onClick={() => deleteCategory(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: '14px', padding: '2px 6px' }}
+                <button onClick={() => handleDeleteCategory(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: '14px', padding: '2px 6px' }}
                   onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = 'var(--red)'}
                   onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = 'var(--text3)'}>×</button>
               )}
@@ -174,7 +153,7 @@ export default function SettingsPage() {
         <SettingSection title="Google Calendar">
           <SettingRow label="Sync อัตโนมัติ" sub="สร้าง/อัปเดต/ลบ event ใน Google Calendar เมื่อมี deadline">
             <div
-              onClick={() => saveGcalSync(!gcalSync)}
+              onClick={() => setGcalSync(!gcalSync)}
               style={{
                 width: '40px', height: '22px', borderRadius: '11px',
                 background: gcalSync ? '#4285F4' : 'var(--border)',
@@ -190,7 +169,7 @@ export default function SettingsPage() {
               }} />
             </div>
           </SettingRow>
-          <SettingRow label="สถานะการเชื่อมต่อ" sub="ตรวจสอบว่า token ยังใช้ได้อยู่">
+          <SettingRow label="สถานะการเชื่อมต่อ" sub="ตรวจสอบว่า Service Account เข้าถึง Calendar ได้">
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               {gcalConnected === true && <span style={{ fontSize: '12px', color: 'var(--green)' }}>✓ เชื่อมต่อแล้ว</span>}
               {gcalConnected === false && <span style={{ fontSize: '12px', color: 'var(--red)' }}>✗ ไม่ได้เชื่อมต่อ</span>}
@@ -199,17 +178,14 @@ export default function SettingsPage() {
               </button>
             </div>
           </SettingRow>
-          <div style={{ fontSize: '12px', color: 'var(--text3)', padding: '8px 0', lineHeight: 1.6 }}>
-            หากเชื่อมต่อไม่ได้: ออกจากระบบ → เข้าสู่ระบบใหม่ผ่าน Google → ระบบจะขอสิทธิ์ Calendar อัตโนมัติ
-          </div>
         </SettingSection>
 
         <SettingSection title="เกี่ยวกับ">
           <div style={{ fontSize: '13px', color: 'var(--text2)', lineHeight: 1.7 }}>
-            <div><strong>KhunMeenFlow</strong> v4.0 PWA</div>
+            <div><strong>KhunMeenFlow</strong> v4.1 PWA</div>
             <div style={{ color: 'var(--text3)', fontSize: '12px', marginTop: '4px' }}>
-              สร้างด้วย Next.js + Supabase + Vercel<br/>
-              Sync ข้ามอุปกรณ์แบบ Real-time
+              สร้างด้วย Next.js + Google Sheets API + Vercel<br/>
+              Sync ข้ามอุปกรณ์ผ่าน Google Sheets
             </div>
           </div>
         </SettingSection>

@@ -1,7 +1,7 @@
 'use client'
-import { createClient } from '@/lib/supabase/client'
 import { useUIStore } from '@/store/uiStore'
 import { useTaskStore } from '@/store/taskStore'
+import { updateTaskStatus, updateSubtaskDone } from '@/app/actions/tasks'
 import { formatDeadline, getSubtaskProgress } from '@/lib/utils'
 import type { Task } from '@/types'
 
@@ -17,13 +17,9 @@ const COLUMNS = [
 
 export function KanbanView({ tasks }: KanbanViewProps) {
   const { openTaskModal } = useUIStore()
-  const supabase = createClient()
 
   async function moveTask(taskId: string, status: string) {
-    await supabase.from('tasks').update({
-      status,
-      completed_at: status === 'done' ? new Date().toISOString() : null,
-    }).eq('id', taskId)
+    await updateTaskStatus(taskId, status)
   }
 
   return (
@@ -83,7 +79,6 @@ export function KanbanView({ tasks }: KanbanViewProps) {
 function KanbanCard({ task, onEdit, onMove, isFirst, isLast }: {
   task: Task; onEdit: () => void; onMove: (id: string, status: string) => void; isFirst: boolean; isLast: boolean
 }) {
-  const supabase = createClient()
   const { updateSubtasks } = useTaskStore()
   const { label: deadlineLabel, status: deadlineStatus } = formatDeadline(task.deadline)
   const subtasks = task.subtasks || []
@@ -108,10 +103,11 @@ function KanbanCard({ task, onEdit, onMove, isFirst, isLast }: {
   }
 
   async function toggleSubtaskDone(subtaskId: string) {
+    const sub = subtasks.find(s => s.id === subtaskId)
+    if (!sub) return
     const updated = subtasks.map(s => s.id === subtaskId ? { ...s, done: !s.done } : s)
     updateSubtasks(task.id, updated)
-    const sub = subtasks.find(s => s.id === subtaskId)
-    if (sub) await supabase.from('subtasks').update({ done: !sub.done }).eq('id', subtaskId)
+    await updateSubtaskDone(subtaskId, !sub.done)
   }
 
   return (
