@@ -24,7 +24,12 @@ export default function TasksPage() {
   }, [searchParams])
 
   const filteredTasks = useMemo(() => {
-    let result = [...tasks]
+    // ซ่อนงานเสร็จที่ผ่านไปเกิน 3 วัน (ยังอยู่ในประวัติ)
+    let result = tasks.filter(t => {
+      if (t.status !== 'done') return true
+      if (!t.completed_at) return true
+      return differenceInDays(new Date(), parseISO(t.completed_at)) < 3
+    })
 
     const urlFilter = searchParams.get('filter')
     if (urlFilter === 'overdue') {

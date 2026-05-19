@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { useUIStore } from '@/store/uiStore'
 import { useTasks } from '@/hooks/useTasks'
+import { useOverdueNotification } from '@/hooks/useOverdueNotification'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MobileHeader } from '@/components/layout/MobileHeader'
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -10,6 +11,7 @@ import { TaskModal } from '@/components/tasks/TaskModal'
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { theme, accent, fontSize, sidebarOpen, setSidebarOpen } = useUIStore()
   const { fetchAll } = useTasks()
+  useOverdueNotification()
 
   // Apply theme/accent/fontSize to <html>
   useEffect(() => {

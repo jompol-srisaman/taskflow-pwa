@@ -2,6 +2,7 @@
 import { useMemo } from 'react'
 import { useTaskStore } from '@/store/taskStore'
 import { TaskCard } from '@/components/tasks/TaskCard'
+import { isPast, parseISO, isToday } from 'date-fns'
 import type { Task } from '@/types'
 
 interface CardViewProps {
@@ -11,12 +12,17 @@ interface CardViewProps {
 export function CardView({ tasks }: CardViewProps) {
   const { categories } = useTaskStore()
 
-  // Group tasks by category (uncategorized last)
+  const overdueTasks = useMemo(() =>
+    tasks.filter(t => t.status !== 'done' && t.deadline && isPast(parseISO(t.deadline)) && !isToday(parseISO(t.deadline)))
+  , [tasks])
+
+  // Group non-overdue tasks by category (uncategorized last)
   const groups = useMemo(() => {
+    const nonOverdue = tasks.filter(t => !(t.status !== 'done' && t.deadline && isPast(parseISO(t.deadline)) && !isToday(parseISO(t.deadline))))
     const catMap = new Map<string, Task[]>()
     const uncategorized: Task[] = []
 
-    tasks.forEach(task => {
+    nonOverdue.forEach(task => {
       if (task.category_id && task.category) {
         if (!catMap.has(task.category_id)) catMap.set(task.category_id, [])
         catMap.get(task.category_id)!.push(task)
@@ -49,6 +55,22 @@ export function CardView({ tasks }: CardViewProps) {
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {/* Overdue section */}
+      {overdueTasks.length > 0 && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid var(--red-border)' }}>
+            <div style={{ width: '9px', height: '9px', borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--red)' }}>เกินกำหนด</span>
+            <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', color: 'var(--red)', background: 'var(--red-bg)', padding: '1px 7px', borderRadius: '10px', marginLeft: 'auto' }}>
+              {overdueTasks.length}
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+            {overdueTasks.map(task => <TaskCard key={task.id} task={task} />)}
+          </div>
+        </div>
+      )}
+
       {groups.map(group => (
         <div key={group.id}>
           {/* Group header */}
