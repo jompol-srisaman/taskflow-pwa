@@ -3,17 +3,18 @@ import type { Task } from '@/types'
 
 const PRIO_COLOR: Record<string, string> = { high: '11', medium: '6', low: '1' }
 
+const TZ = 'Asia/Bangkok'
+
 function buildEvent(task: Task) {
   const date = task.deadline!.substring(0, 10)
   const colorId = task.status === 'done' ? '8' : (PRIO_COLOR[task.priority] ?? '1')
 
   if (task.start_time) {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     return {
       summary: task.title,
       description: task.note || undefined,
-      start: { dateTime: `${date}T${task.start_time}:00`, timeZone: tz },
-      end: { dateTime: `${date}T${task.end_time || task.start_time}:00`, timeZone: tz },
+      start: { dateTime: `${date}T${task.start_time}:00`, timeZone: TZ },
+      end: { dateTime: `${date}T${task.end_time || task.start_time}:00`, timeZone: TZ },
       colorId,
     }
   }

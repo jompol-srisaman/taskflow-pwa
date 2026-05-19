@@ -1,8 +1,8 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useUIStore } from '@/store/uiStore'
 import { useTaskStore } from '@/store/taskStore'
-import { toggleTaskDone, deleteTask, updateSubtaskDone } from '@/app/actions/tasks'
+import { toggleTaskDone, deleteTask, updateSubtaskDone, startTimer, stopTimer } from '@/app/actions/tasks'
 import { formatDeadline, formatTime, getSubtaskProgress, RECURRING_LABEL } from '@/lib/utils'
 import type { Task } from '@/types'
 
@@ -28,14 +28,36 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
   const { label: deadlineLabel, status: deadlineStatus } = formatDeadline(task.deadline)
   const subtaskProgress = getSubtaskProgress(task.subtasks || [])
 
-  const [timerDisplay] = useState(() => {
+  const [timerSecs, setTimerSecs] = useState(() => {
     if (!task.timer_started_at) return task.total_time_seconds
     return task.total_time_seconds + Math.floor((Date.now() - new Date(task.timer_started_at).getTime()) / 1000)
   })
+  const [isRunning, setIsRunning] = useState(!!task.timer_started_at)
+
+  useEffect(() => {
+    if (!isRunning) return
+    const id = setInterval(() => setTimerSecs(s => s + 1), 1000)
+    return () => clearInterval(id)
+  }, [isRunning])
 
   async function toggleDone() {
-    const updates = await toggleTaskDone(task)
+    const { newRecurringTask, ...updates } = await toggleTaskDone(task)
     upsertTask({ ...task, ...updates })
+    if (newRecurringTask) upsertTask(newRecurringTask)
+  }
+
+  async function handleTimer(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (isRunning) {
+      setIsRunning(false)
+      const result = await stopTimer(task)
+      upsertTask({ ...task, total_time_seconds: result.total_time_seconds, timer_started_at: null })
+    } else {
+      const startedAt = new Date().toISOString()
+      setIsRunning(true)
+      await startTimer(task.id)
+      upsertTask({ ...task, timer_started_at: startedAt })
+    }
   }
 
   async function toggleSubtaskDone(subtaskId: string) {
@@ -95,8 +117,10 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
               }}>📅 {deadlineLabel}</span>
             )}
             {task.recurring && <span className="badge badge-recur">🔄 {RECURRING_LABEL[task.recurring]}</span>}
-            {timerDisplay > 0 && (
-              <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>⏱ {formatTime(timerDisplay)}</span>
+            {(timerSecs > 0 || isRunning) && (
+              <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: isRunning ? 'var(--accent)' : 'var(--text3)', fontWeight: isRunning ? 600 : 400 }}>
+                ⏱ {formatTime(timerSecs)}
+              </span>
             )}
             {task.google_event_id && (
               <span title="Synced to Google Calendar" style={{ fontSize: '10px', color: '#4285F4', fontFamily: 'var(--mono)' }}>G</span>
@@ -137,6 +161,12 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto', flexShrink: 0 }}>
+          {!isDone && (
+            <button className="icon-btn" onClick={handleTimer} title={isRunning ? 'หยุดจับเวลา' : 'เริ่มจับเวลา'}
+              style={{ color: isRunning ? 'var(--accent)' : 'var(--text3)' }}>
+              {isRunning ? '⏹' : '▶'}
+            </button>
+          )}
           <button className="icon-btn" onClick={() => openTaskModal(task.id)} title="แก้ไข">✏️</button>
           <button
             className="icon-btn"

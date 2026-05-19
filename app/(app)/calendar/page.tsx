@@ -66,7 +66,10 @@ export default function CalendarPage() {
     const map = new Map<string, GCalEvent[]>()
     if (!showGcal) return map
     gcalEvents.forEach(ev => {
-      const date = ev.start.date ?? ev.start.dateTime?.substring(0, 10)
+      // all-day events use date field; timed events convert dateTime to Bangkok date
+      const date = ev.start.date ?? (ev.start.dateTime
+        ? new Date(ev.start.dateTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+        : undefined)
       if (!date) return
       if (!map.has(date)) map.set(date, [])
       map.get(date)!.push(ev)

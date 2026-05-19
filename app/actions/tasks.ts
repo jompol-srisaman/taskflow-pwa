@@ -3,6 +3,7 @@ import { sheetReadAll, sheetAppend, sheetUpdate, sheetDelete, sheetDeleteWhere, 
 import { gcalCreate, gcalUpdate, gcalDelete } from '@/lib/googleCalendar'
 import { ensurePresetCategories } from '@/app/actions/categories'
 import { generateId } from '@/lib/utils'
+import { addDays, addWeeks, addMonths, parseISO } from 'date-fns'
 import type { Task, Category, Subtask, ActivityLog, Priority, TaskStatus, RecurringType } from '@/types'
 
 const USER_ID = 'user'
@@ -240,31 +241,108 @@ export async function updateSubtaskDone(subtaskId: string, done: boolean): Promi
   await sheetUpdate('subtasks', subtaskId, { done: String(done) })
 }
 
-export async function toggleTaskDone(task: Task): Promise<Partial<Task>> {
+export async function toggleTaskDone(task: Task): Promise<Partial<Task> & { newRecurringTask?: Task }> {
   const isDone = task.status !== 'done'
+  const completedAt = now()
   const updates: Record<string, string> = {
     status: isDone ? 'done' : 'todo',
-    completed_at: isDone ? now() : '',
-    updated_at: now(),
+    completed_at: isDone ? completedAt : '',
+    updated_at: completedAt,
   }
 
   await sheetUpdate('tasks', task.id, updates)
 
+  let newRecurringTask: Task | undefined
   if (isDone) {
-    await sheetAppend('activity_log', {
+    const logPromise = sheetAppend('activity_log', {
       id: generateId(), user_id: USER_ID,
       task_id: task.id, action: 'completed',
-      task_title: task.title, created_at: now(),
+      task_title: task.title, created_at: completedAt,
     })
-    // Update Google Calendar event color to indicate done
-    if (task.google_event_id && task.deadline) {
-      await gcalUpdate(task.google_event_id, { ...task, status: 'done' })
+    const gcalPromise = (task.google_event_id && task.deadline)
+      ? gcalUpdate(task.google_event_id, { ...task, status: 'done' })
+      : Promise.resolve()
+
+    // Auto-create next recurring task
+    if (task.recurring && task.deadline) {
+      const base = parseISO(task.deadline)
+      const nextDate = task.recurring === 'daily' ? addDays(base, 1)
+        : task.recurring === 'weekly' ? addWeeks(base, 1)
+        : addMonths(base, 1)
+      const nextDeadline = nextDate.toISOString().split('T')[0]
+      const newId = generateId()
+      const ts = completedAt
+
+      const newRow: Record<string, string> = {
+        id: newId, user_id: USER_ID,
+        category_id: task.category_id ?? '',
+        title: task.title, note: task.note ?? '',
+        priority: task.priority, status: 'todo',
+        deadline: nextDeadline,
+        start_time: task.start_time ?? '',
+        end_time: task.end_time ?? '',
+        recurring: task.recurring,
+        total_time_seconds: '0', timer_started_at: '',
+        google_event_id: '', completed_at: '',
+        created_at: ts, updated_at: ts,
+      }
+
+      await Promise.all([
+        logPromise, gcalPromise,
+        sheetAppend('tasks', newRow),
+        ...(task.subtasks || []).map((s, i) => sheetAppend('subtasks', {
+          id: generateId(), task_id: newId,
+          title: s.title, done: 'false',
+          sort_order: String(i), created_at: ts,
+        })),
+      ])
+
+      newRecurringTask = {
+        id: newId, user_id: USER_ID,
+        category_id: task.category_id,
+        title: task.title, note: task.note ?? '',
+        priority: task.priority, status: 'todo',
+        deadline: nextDeadline,
+        start_time: task.start_time, end_time: task.end_time,
+        recurring: task.recurring,
+        total_time_seconds: 0, timer_started_at: null,
+        google_event_id: null, completed_at: null,
+        created_at: ts, updated_at: ts,
+        category: task.category,
+        subtasks: (task.subtasks || []).map((s, i) => ({
+          ...s, id: generateId(), task_id: newId,
+          done: false, sort_order: i, created_at: ts,
+        })),
+      }
+    } else {
+      await Promise.all([logPromise, gcalPromise])
     }
   }
 
   return {
     status: (isDone ? 'done' : 'todo') as TaskStatus,
-    completed_at: isDone ? updates.completed_at : null,
-    updated_at: updates.updated_at,
+    completed_at: isDone ? completedAt : null,
+    updated_at: completedAt,
+    newRecurringTask,
   }
+}
+
+export async function startTimer(taskId: string): Promise<void> {
+  await sheetUpdate('tasks', taskId, {
+    timer_started_at: new Date().toISOString(),
+    updated_at: now(),
+  })
+}
+
+export async function stopTimer(task: Task): Promise<{ total_time_seconds: number }> {
+  const elapsed = task.timer_started_at
+    ? Math.floor((Date.now() - new Date(task.timer_started_at).getTime()) / 1000)
+    : 0
+  const total = task.total_time_seconds + elapsed
+  await sheetUpdate('tasks', task.id, {
+    total_time_seconds: String(total),
+    timer_started_at: '',
+    updated_at: now(),
+  })
+  return { total_time_seconds: total }
 }
