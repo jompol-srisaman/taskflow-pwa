@@ -2,7 +2,6 @@
 import { useEffect } from 'react'
 import { useUIStore } from '@/store/uiStore'
 import { useTasks } from '@/hooks/useTasks'
-import { ensurePresetCategories } from '@/app/actions/categories'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MobileHeader } from '@/components/layout/MobileHeader'
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -24,7 +23,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [theme, accent, fontSize])
 
   useEffect(() => {
-    ensurePresetCategories().then(() => fetchAll())
+    fetchAll()
   }, [])
 
   return (

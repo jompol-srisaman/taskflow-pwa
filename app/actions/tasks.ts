@@ -1,6 +1,7 @@
 'use server'
 import { sheetReadAll, sheetAppend, sheetUpdate, sheetDelete, sheetDeleteWhere, ensureSheets } from '@/lib/sheets'
 import { gcalCreate, gcalUpdate, gcalDelete } from '@/lib/googleCalendar'
+import { ensurePresetCategories } from '@/app/actions/categories'
 import { generateId } from '@/lib/utils'
 import type { Task, Category, Subtask, ActivityLog, Priority, TaskStatus, RecurringType } from '@/types'
 
@@ -12,6 +13,7 @@ function now() { return new Date().toISOString() }
 
 export async function fetchAllData(): Promise<{ tasks: Task[]; categories: Category[]; activityLog: ActivityLog[] }> {
   await ensureSheets()
+  await ensurePresetCategories()
   const [rawTasks, rawCats, rawSubs, rawLog] = await Promise.all([
     sheetReadAll('tasks'),
     sheetReadAll('categories'),
