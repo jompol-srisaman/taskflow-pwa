@@ -84,12 +84,12 @@ function KanbanCard({ task, onEdit, onMove, isFirst, isLast }: {
   const subtasks = task.subtasks || []
   const subtaskProgress = getSubtaskProgress(subtasks)
 
-  const PRIO = {
-    high:   { bg: 'var(--red-bg)',    color: 'var(--red)',    label: 'สูง' },
-    medium: { bg: 'var(--orange-bg)', color: 'var(--orange)', label: 'กลาง' },
-    low:    { bg: 'var(--blue-bg)',   color: 'var(--blue)',   label: 'ต่ำ' },
+  const PRIO: Record<string, { bg: string; color: string; label: string }> = {
+    high:   { bg: 'var(--purple-bg)', color: 'var(--purple)', label: 'สำคัญ' },
+    medium: { bg: 'var(--blue-bg)',   color: 'var(--blue)',   label: 'ปานกลาง' },
+    low:    { bg: 'var(--surface2)',  color: 'var(--text3)',  label: 'ต่ำ' },
   }
-  const prio = PRIO[task.priority]
+  const prio = PRIO[task.is_important] ?? PRIO.medium
 
   async function moveLeft() {
     const map = { in_progress: 'todo', done: 'in_progress' }

@@ -24,14 +24,17 @@ export default function SettingsPage() {
   const [newCatName, setNewCatName] = useState('')
   const [newCatColor, setNewCatColor] = useState('#6B6760')
   const [gcalConnected, setGcalConnected] = useState<boolean | null>(null)
+  const [gcalError, setGcalError] = useState<string | null>(null)
   const [gcalTesting, setGcalTesting] = useState(false)
 
   useEffect(() => { setNameInput(name) }, [name])
 
   async function testGcalConnection() {
     setGcalTesting(true)
-    const ok = await checkCalendarConnection()
-    setGcalConnected(ok)
+    setGcalError(null)
+    const res = await checkCalendarConnection()
+    setGcalConnected(res.ok)
+    if (!res.ok) setGcalError(res.error || 'Connection failed')
     setGcalTesting(false)
   }
 
@@ -170,12 +173,15 @@ export default function SettingsPage() {
             </div>
           </SettingRow>
           <SettingRow label="สถานะการเชื่อมต่อ" sub="ตรวจสอบว่า Service Account เข้าถึง Calendar ได้">
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              {gcalConnected === true && <span style={{ fontSize: '12px', color: 'var(--green)' }}>✓ เชื่อมต่อแล้ว</span>}
-              {gcalConnected === false && <span style={{ fontSize: '12px', color: 'var(--red)' }}>✗ ไม่ได้เชื่อมต่อ</span>}
-              <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: '12px' }} onClick={testGcalConnection} disabled={gcalTesting}>
-                {gcalTesting ? 'กำลังตรวจสอบ...' : 'ทดสอบ'}
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {gcalConnected === true && <span style={{ fontSize: '12px', color: 'var(--green)' }}>✓ เชื่อมต่อแล้ว</span>}
+                {gcalConnected === false && <span style={{ fontSize: '12px', color: 'var(--red)' }}>✗ ไม่ได้เชื่อมต่อ</span>}
+                <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: '12px' }} onClick={testGcalConnection} disabled={gcalTesting}>
+                  {gcalTesting ? 'กำลังตรวจสอบ...' : 'ทดสอบ'}
+                </button>
+              </div>
+              {gcalError && <div style={{ fontSize: '10px', color: 'var(--red)', maxWidth: '200px', textAlign: 'right' }}>{gcalError}</div>}
             </div>
           </SettingRow>
         </SettingSection>

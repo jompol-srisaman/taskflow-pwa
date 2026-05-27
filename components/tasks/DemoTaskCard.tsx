@@ -1,8 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useUIStore } from '@/store/uiStore'
-import { useTaskStore } from '@/store/taskStore'
-import { toggleTaskDone, deleteTask, updateSubtaskDone, startTimer, stopTimer } from '@/app/actions/tasks'
+import { useDemoTaskStore } from '@/store/demoTaskStore'
+import { useDemoActions } from '@/hooks/useDemoActions'
 import { formatDeadline, formatTime, getSubtaskProgress, RECURRING_LABEL, getImportanceLabel } from '@/lib/utils'
 import type { Task } from '@/types'
 
@@ -11,9 +11,10 @@ interface TaskCardProps {
   compact?: boolean
 }
 
-export function TaskCard({ task, compact = false }: TaskCardProps) {
+export function DemoTaskCard({ task, compact = false }: TaskCardProps) {
   const { openTaskModal } = useUIStore()
-  const { removeTask, upsertTask, updateSubtasks } = useTaskStore()
+  const { updateSubtasks } = useDemoTaskStore()
+  const actions = useDemoActions()
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -34,54 +35,44 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
     return () => clearInterval(id)
   }, [isRunning])
 
-  async function toggleDone() {
-    const { newRecurringTask, ...updates } = await toggleTaskDone(task)
-    upsertTask({ ...task, ...updates })
-    if (newRecurringTask) upsertTask(newRecurringTask)
+  function toggleDone() {
+    actions.toggleTaskDone(task)
   }
 
-  async function handleTimer(e: React.MouseEvent) {
+  function handleTimer(e: React.MouseEvent) {
     e.stopPropagation()
     if (isRunning) {
       setIsRunning(false)
-      const result = await stopTimer(task)
-      upsertTask({ ...task, total_time_seconds: result.total_time_seconds, timer_started_at: null })
+      actions.stopTimer(task)
     } else {
-      const startedAt = new Date().toISOString()
       setIsRunning(true)
-      await startTimer(task.id)
-      upsertTask({ ...task, timer_started_at: startedAt })
+      actions.startTimer(task)
     }
   }
 
-  async function toggleSubtaskDone(subtaskId: string) {
+  function toggleSubtaskDone(subtaskId: string) {
     const subtasks = task.subtasks || []
     const sub = subtasks.find(s => s.id === subtaskId)
     if (!sub) return
-    const updated = subtasks.map(s => s.id === subtaskId ? { ...s, done: !s.done } : s)
-    updateSubtasks(task.id, updated)
-    await updateSubtaskDone(subtaskId, !sub.done)
+    actions.updateSubtaskDone(task, subtaskId, !sub.done)
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     setDeleting(true)
-    removeTask(task.id)
+    actions.deleteTask(task)
     setConfirmDelete(false)
-    await deleteTask(task)
     setDeleting(false)
   }
 
   return (
     <div className="task-card fade-in" style={{ opacity: isDone ? 0.65 : 1, position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-        {/* Checkbox */}
         <div
           className={`task-check${isDone ? ' checked' : ''}`}
           style={{ marginTop: '2px', flexShrink: 0 }}
           onClick={toggleDone}
         />
 
-        {/* Body */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
             fontSize: 'var(--fs)', fontWeight: 500, marginBottom: '3px',
@@ -104,6 +95,12 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
             {task.category && (
               <span className="badge" style={{ background: task.category.bg_color, color: task.category.color }}>{task.category.name}</span>
             )}
+            {task.project && (
+              <span className="badge" style={{ background: `color-mix(in srgb, ${task.project.color} 12%, var(--surface2))`, color: task.project.color, border: `1px solid color-mix(in srgb, ${task.project.color} 25%, transparent)` }}>📁 {task.project.name}</span>
+            )}
+            {task.phase && (
+              <span className="badge" style={{ background: `color-mix(in srgb, ${task.phase.color} 12%, var(--surface2))`, color: task.phase.color }}>{task.phase.name}</span>
+            )}
             {deadlineLabel && (
               <span style={{
                 fontSize: '11px', fontFamily: 'var(--mono)',
@@ -117,14 +114,10 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
                 ⏱ {formatTime(timerSecs)}
               </span>
             )}
-            {task.google_event_id && (
-              <span title="Synced to Google Calendar" style={{ fontSize: '10px', color: '#4285F4', fontFamily: 'var(--mono)' }}>G</span>
-            )}
           </div>
 
           {task.subtasks && task.subtasks.length > 0 && (
             <div style={{ marginTop: '8px' }}>
-              {/* Progress bar */}
               <div style={{ height: '3px', background: 'var(--surface2)', borderRadius: '2px', overflow: 'hidden', marginBottom: '6px' }}>
                 <div style={{
                   height: '100%', borderRadius: '2px',
@@ -132,7 +125,6 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
                   width: `${subtaskProgress.pct}%`, transition: 'width .3s ease',
                 }} />
               </div>
-              {/* Subtask list — tappable directly */}
               {task.subtasks.map(st => (
                 <div
                   key={st.id}
@@ -154,7 +146,6 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
           )}
         </div>
 
-        {/* Actions */}
         <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto', flexShrink: 0 }}>
           {!isDone && (
             <button className="icon-btn" onClick={handleTimer} title={isRunning ? 'หยุดจับเวลา' : 'เริ่มจับเวลา'}
@@ -173,27 +164,21 @@ export function TaskCard({ task, compact = false }: TaskCardProps) {
         </div>
       </div>
 
-      {/* Inline delete confirmation — no window.confirm (blocked in PWA standalone) */}
       {confirmDelete && (
         <div style={{
-          marginTop: '10px',
-          padding: '10px 12px',
-          background: 'var(--red-bg)',
-          border: '1px solid var(--red-border)',
+          marginTop: '10px', padding: '10px 12px',
+          background: 'var(--red-bg)', border: '1px solid var(--red-border)',
           borderRadius: 'var(--r)',
           display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
         }}>
-          <span style={{ fontSize: '12px', color: 'var(--red)', flex: 1 }}>ลบ "{task.title}" แน่ใจไหม?</span>
+          <span style={{ fontSize: '12px', color: 'var(--red)', flex: 1 }}>ลบ "{task.title}" แน่ใจไหม? (demo เท่านั้น)</span>
           <div style={{ display: 'flex', gap: '6px' }}>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              style={{ padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r)', fontSize: '12px', cursor: 'pointer', background: 'var(--surface)', color: 'var(--text2)', fontFamily: 'var(--font)' }}
-            >ยกเลิก</button>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              style={{ padding: '4px 10px', border: 'none', borderRadius: 'var(--r)', fontSize: '12px', cursor: 'pointer', background: 'var(--red)', color: 'white', fontFamily: 'var(--font)' }}
-            >{deleting ? '...' : 'ลบ'}</button>
+            <button onClick={() => setConfirmDelete(false)}
+              style={{ padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r)', fontSize: '12px', cursor: 'pointer', background: 'var(--surface)', color: 'var(--text2)', fontFamily: 'var(--font)' }}>ยกเลิก</button>
+            <button onClick={handleDelete} disabled={deleting}
+              style={{ padding: '4px 10px', border: 'none', borderRadius: 'var(--r)', fontSize: '12px', cursor: 'pointer', background: 'var(--red)', color: 'white', fontFamily: 'var(--font)' }}>
+              {deleting ? '...' : 'ลบ'}
+            </button>
           </div>
         </div>
       )}

@@ -2,16 +2,18 @@
 import { create } from 'zustand'
 import type { Task, Category, Subtask, ActivityLog, Project, Phase, ProjectNote } from '@/types'
 
-interface TaskState {
+export type DemoActiveTab = 'dashboard' | 'tasks' | 'projects'
+
+export interface DemoTaskState {
   tasks: Task[]
   categories: Category[]
   activityLog: ActivityLog[]
   projects: Project[]
   phases: Phase[]
   projectNotes: ProjectNote[]
-  currentProjectId: string | null  // null = "ทั้งหมด"
+  currentProjectId: string | null
+  activeTab: DemoActiveTab
   loading: boolean
-  // Actions
   setTasks: (tasks: Task[]) => void
   setCategories: (categories: Category[]) => void
   setActivityLog: (log: ActivityLog[]) => void
@@ -19,11 +21,10 @@ interface TaskState {
   setPhases: (phases: Phase[]) => void
   setProjectNotes: (notes: ProjectNote[]) => void
   setCurrentProject: (id: string | null) => void
+  setActiveTab: (tab: DemoActiveTab) => void
   setLoading: (loading: boolean) => void
   upsertTask: (task: Task) => void
   removeTask: (id: string) => void
-  upsertCategory: (cat: Category) => void
-  removeCategory: (id: string) => void
   updateSubtasks: (taskId: string, subtasks: Subtask[]) => void
   upsertProject: (project: Project) => void
   removeProject: (id: string) => void
@@ -33,7 +34,7 @@ interface TaskState {
   removeProjectNote: (id: string) => void
 }
 
-export const useTaskStore = create<TaskState>()((set) => ({
+export const useDemoTaskStore = create<DemoTaskState>()((set) => ({
   tasks: [],
   categories: [],
   activityLog: [],
@@ -41,7 +42,8 @@ export const useTaskStore = create<TaskState>()((set) => ({
   phases: [],
   projectNotes: [],
   currentProjectId: null,
-  loading: true,
+  activeTab: 'dashboard',
+  loading: false,
 
   setTasks: (tasks) => set({ tasks }),
   setCategories: (categories) => set({ categories }),
@@ -50,6 +52,7 @@ export const useTaskStore = create<TaskState>()((set) => ({
   setPhases: (phases) => set({ phases }),
   setProjectNotes: (projectNotes) => set({ projectNotes }),
   setCurrentProject: (currentProjectId) => set({ currentProjectId }),
+  setActiveTab: (activeTab) => set({ activeTab }),
   setLoading: (loading) => set({ loading }),
 
   upsertTask: (task) =>
@@ -65,20 +68,6 @@ export const useTaskStore = create<TaskState>()((set) => ({
 
   removeTask: (id) =>
     set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
-
-  upsertCategory: (cat) =>
-    set((s) => {
-      const idx = s.categories.findIndex((c) => c.id === cat.id)
-      if (idx >= 0) {
-        const next = [...s.categories]
-        next[idx] = cat
-        return { categories: next }
-      }
-      return { categories: [...s.categories, cat] }
-    }),
-
-  removeCategory: (id) =>
-    set((s) => ({ categories: s.categories.filter((c) => c.id !== id) })),
 
   updateSubtasks: (taskId, subtasks) =>
     set((s) => ({

@@ -1,12 +1,14 @@
 'use client'
+import { useState } from 'react'
 import { useUIStore } from '@/store/uiStore'
 import { useTaskStore } from '@/store/taskStore'
 import { useRouter } from 'next/navigation'
 
 export function Sidebar() {
   const { currentPage, setCurrentPage, sidebarOpen, setSidebarOpen, name } = useUIStore()
-  const { tasks, categories } = useTaskStore()
+  const { tasks, categories, projects, currentProjectId, setCurrentProject } = useTaskStore()
   const router = useRouter()
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false)
 
   function navTo(page: string, url?: string) {
     setCurrentPage(page)
@@ -18,14 +20,22 @@ export function Sidebar() {
     return currentPage === page || currentPage.startsWith(`${page}:`)
   }
 
-  const activeTasks = tasks.filter(t => t.status !== 'done')
+  // กรอง tasks ตาม currentProject
+  const filteredTasks = currentProjectId
+    ? tasks.filter(t => t.project_id === currentProjectId)
+    : tasks
+
+  const activeTasks = filteredTasks.filter(t => t.status !== 'done')
   const soonCount = activeTasks.filter(t => {
     if (!t.deadline) return false
     const diff = Math.ceil((new Date(t.deadline).getTime() - Date.now()) / 86400000)
     return diff >= 0 && diff <= 3
   }).length
 
+  const currentProject = projects.find(p => p.id === currentProjectId)
   const initials = name ? name[0].toUpperCase() : 'ฉ'
+
+  const activeProjects = projects.filter(p => p.status === 'active')
 
   return (
     <aside className={`sidebar${sidebarOpen ? ' open' : ''}`} id="sidebar">
@@ -52,6 +62,66 @@ export function Sidebar() {
         </div>
       </div>
 
+      {/* Project Switcher */}
+      <div style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text3)', letterSpacing: '.8px', textTransform: 'uppercase', padding: '0 8px', marginBottom: '4px' }}>Project</div>
+        <button
+          onClick={() => setProjectMenuOpen(v => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            width: '100%', padding: '7px 10px',
+            background: 'var(--surface2)', border: '1px solid var(--border)',
+            borderRadius: 'var(--r)', cursor: 'pointer',
+            fontFamily: 'var(--font)', fontSize: '13px', color: 'var(--text)',
+            textAlign: 'left',
+          }}
+        >
+          {currentProject ? (
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: currentProject.color, flexShrink: 0, display: 'block' }} />
+          ) : (
+            <span style={{ fontSize: '12px' }}>🌐</span>
+          )}
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {currentProject?.name ?? 'ทุก Project'}
+          </span>
+          <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{ flexShrink: 0, transform: projectMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>
+            <path d="M1 1l4 4 4-4" stroke="var(--text3)" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </button>
+
+        {projectMenuOpen && (
+          <div style={{ marginTop: '4px', border: '1px solid var(--border)', borderRadius: 'var(--r)', overflow: 'hidden', background: 'var(--surface)' }}>
+            <ProjectOption
+              label="ทุก Project"
+              active={!currentProjectId}
+              onClick={() => { setCurrentProject(null); setProjectMenuOpen(false) }}
+            />
+            {activeProjects.map(p => (
+              <ProjectOption
+                key={p.id}
+                label={p.name}
+                color={p.color}
+                taskCount={tasks.filter(t => t.project_id === p.id && t.status !== 'done').length}
+                active={currentProjectId === p.id}
+                onClick={() => { setCurrentProject(p.id); setProjectMenuOpen(false) }}
+              />
+            ))}
+            <div style={{ borderTop: '1px solid var(--border)' }}>
+              <button
+                onClick={() => { navTo('projects'); setProjectMenuOpen(false) }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '7px 10px', border: 'none',
+                  background: 'transparent', cursor: 'pointer',
+                  fontFamily: 'var(--font)', fontSize: '12px',
+                  color: 'var(--blue)', width: '100%', textAlign: 'left',
+                }}
+              >+ จัดการ Projects</button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Navigation */}
       <nav style={{ padding: '8px', flex: 1, overflowY: 'auto' }}>
         <div style={{ marginBottom: '16px' }}>
@@ -68,6 +138,7 @@ export function Sidebar() {
           />
           <NavItem icon={<CalendarIcon />} label="ปฏิทิน" active={isActive('calendar')} onClick={() => navTo('calendar')} />
           <NavItem icon={<HistoryIcon />} label="ประวัติ & รายงาน" active={isActive('history')} onClick={() => navTo('history')} />
+          <NavItem icon={<ProjectsIcon />} label="Projects" active={isActive('projects')} onClick={() => navTo('projects')} count={activeProjects.length || undefined} />
         </div>
 
         {/* Categories */}
@@ -115,6 +186,35 @@ export function Sidebar() {
   )
 }
 
+function ProjectOption({ label, color, taskCount, active, onClick }: {
+  label: string; color?: string; taskCount?: number; active: boolean; onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '8px',
+        padding: '7px 10px', border: 'none', width: '100%', textAlign: 'left',
+        background: active ? 'var(--accent)' : 'transparent',
+        color: active ? 'var(--surface)' : 'var(--text2)',
+        fontFamily: 'var(--font)', fontSize: '13px', cursor: 'pointer',
+      }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface2)' }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
+    >
+      {color ? (
+        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, flexShrink: 0, display: 'block' }} />
+      ) : (
+        <span style={{ fontSize: '12px' }}>🌐</span>
+      )}
+      <span style={{ flex: 1 }}>{label}</span>
+      {taskCount !== undefined && taskCount > 0 && (
+        <span style={{ fontSize: '10px', fontFamily: 'var(--mono)', color: active ? 'rgba(255,255,255,.7)' : 'var(--text3)' }}>{taskCount}</span>
+      )}
+    </button>
+  )
+}
+
 function NavItem({ icon, label, active, onClick, count, countColor }: {
   icon: React.ReactNode; label: string; active: boolean; onClick: () => void; count?: number; countColor?: string
 }) {
@@ -149,3 +249,4 @@ function ClockIcon() { return <svg width="14" height="14" viewBox="0 0 16 16" fi
 function CalendarIcon() { return <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}><rect x="1" y="3" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none"/><path d="M5 1v4M11 1v4M1 7h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg> }
 function HistoryIcon() { return <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}><path d="M8 2a6 6 0 100 12A6 6 0 008 2zm-.75 2.5v4l3 1.5-.75 1.5L6.5 9.5V4.5h.75z"/></svg> }
 function SettingsIcon() { return <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}><path d="M8 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zm-1.2-3.2l-.6 1.8H4.5L3 5.5l1.2 1.5-.6 2 1.8 1 1.2-1.5H8.4l1.2 1.5 1.8-1-.6-2L12 5.5l-1.5-1.4H8.8l-.6-1.8H6.8z"/></svg> }
+function ProjectsIcon() { return <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}><path d="M1 3a2 2 0 012-2h3.5l1.5 2H13a2 2 0 012 2v6a2 2 0 01-2 2H3a2 2 0 01-2-2V3z"/></svg> }

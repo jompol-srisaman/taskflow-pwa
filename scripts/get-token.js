@@ -11,8 +11,29 @@
 const { google } = require('googleapis')
 const http = require('http')
 const url = require('url')
+const fs = require('fs')
+const path = require('path')
 
-require('dotenv').config({ path: '.env.local' })
+// Parse .env.local โดยไม่ใช้ dotenv (รองรับ dotenv v17 ที่ drop CJS)
+function loadEnv() {
+  const envPath = path.join(process.cwd(), '.env.local')
+  try {
+    const lines = fs.readFileSync(envPath, 'utf8').split('\n')
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const eqIdx = trimmed.indexOf('=')
+      if (eqIdx < 0) continue
+      const key = trimmed.slice(0, eqIdx).trim()
+      const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '')
+      if (key && !process.env[key]) process.env[key] = val
+    }
+  } catch {
+    console.warn('ไม่พบ .env.local — ใช้ environment variables ที่มีอยู่แล้ว')
+  }
+}
+
+loadEnv()
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET

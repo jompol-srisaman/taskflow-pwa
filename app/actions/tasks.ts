@@ -2,9 +2,10 @@
 import { sheetReadAll, sheetAppend, sheetUpdate, sheetDelete, sheetDeleteWhere, ensureSheets } from '@/lib/sheets'
 import { gcalCreate, gcalUpdate, gcalDelete } from '@/lib/googleCalendar'
 import { ensurePresetCategories } from '@/app/actions/categories'
+import { fetchProjects } from '@/app/actions/projects'
 import { generateId } from '@/lib/utils'
 import { addDays, addWeeks, addMonths, parseISO } from 'date-fns'
-import type { Task, Category, Subtask, ActivityLog, Priority, TaskStatus, RecurringType } from '@/types'
+import type { Task, Category, Subtask, ActivityLog, TaskStatus, RecurringType, ImportanceLevel, Project, Phase, ProjectNote } from '@/types'
 
 const USER_ID = 'user'
 
@@ -12,17 +13,22 @@ function now() { return new Date().toISOString() }
 
 // --- Fetch ---
 
-export async function fetchAllData(): Promise<{ tasks: Task[]; categories: Category[]; activityLog: ActivityLog[] }> {
-  await ensureSheets()
-  await ensurePresetCategories()
-  const [rawTasks, rawCats, rawSubs, rawLog] = await Promise.all([
-    sheetReadAll('tasks'),
-    sheetReadAll('categories'),
-    sheetReadAll('subtasks'),
-    sheetReadAll('activity_log'),
-  ])
+export async function fetchAllData(): Promise<{ tasks: Task[]; categories: Category[]; activityLog: ActivityLog[]; projects: Project[]; phases: Phase[]; projectNotes: ProjectNote[] }> {
+  try {
+    console.log('Fetching all data from Google Sheets...')
+    await ensureSheets()
+    await ensurePresetCategories()
+    const [rawTasks, rawCats, rawSubs, rawLog, projectData] = await Promise.all([
+      sheetReadAll('tasks'),
+      sheetReadAll('categories'),
+      sheetReadAll('subtasks'),
+      sheetReadAll('activity_log'),
+      fetchProjects(),
+    ])
 
-  const categories: Category[] = rawCats.map(r => ({
+    console.log(`Fetched: ${rawTasks.length} tasks, ${rawCats.length} categories, ${rawSubs.length} subtasks, ${rawLog.length} logs`)
+
+    const categories: Category[] = rawCats.map(r => ({
     id: r.id, user_id: r.user_id, name: r.name,
     color: r.color, bg_color: r.bg_color,
     is_preset: r.is_preset === 'true',
@@ -32,6 +38,12 @@ export async function fetchAllData(): Promise<{ tasks: Task[]; categories: Categ
 
   const catById: Record<string, Category> = {}
   for (const c of categories) catById[c.id] = c
+
+  const { projects, phases, projectNotes } = projectData
+  const projectById: Record<string, Project> = {}
+  for (const p of projects) projectById[p.id] = p
+  const phaseById: Record<string, Phase> = {}
+  for (const p of phases) phaseById[p.id] = p
 
   const subsByTask: Record<string, Subtask[]> = {}
   for (const r of rawSubs) {
@@ -48,8 +60,11 @@ export async function fetchAllData(): Promise<{ tasks: Task[]; categories: Categ
   const tasks: Task[] = rawTasks.map(r => ({
     id: r.id, user_id: r.user_id,
     category_id: r.category_id || null,
+    project_id: r.project_id || null,
+    phase_id: r.phase_id || null,
     title: r.title, note: r.note,
-    priority: r.priority as Priority,
+    is_urgent: r.is_urgent === 'true',
+    is_important: (['high','medium','low'].includes(r.is_important) ? r.is_important : 'medium') as ImportanceLevel,
     status: r.status as TaskStatus,
     deadline: r.deadline || null,
     start_time: r.start_time || null,
@@ -62,6 +77,8 @@ export async function fetchAllData(): Promise<{ tasks: Task[]; categories: Categ
     created_at: r.created_at,
     updated_at: r.updated_at,
     category: r.category_id ? catById[r.category_id] : undefined,
+    project: r.project_id ? projectById[r.project_id] : undefined,
+    phase: r.phase_id ? phaseById[r.phase_id] : undefined,
     subtasks: subsByTask[r.id] ?? [],
   }))
 
@@ -73,9 +90,12 @@ export async function fetchAllData(): Promise<{ tasks: Task[]; categories: Categ
     created_at: r.created_at,
   }))
 
-  return { tasks, categories, activityLog }
-}
-
+  return { tasks, categories, activityLog, projects, phases, projectNotes }
+  } catch (error) {
+  console.error('Error in fetchAllData:', error)
+  throw error
+  }
+  }
 // --- Task CRUD ---
 
 export async function createTask(
@@ -89,9 +109,12 @@ export async function createTask(
   const row: Record<string, string> = {
     id, user_id: USER_ID,
     category_id: data.category_id ?? '',
+    project_id: data.project_id ?? '',
+    phase_id: data.phase_id ?? '',
     title: data.title ?? '',
     note: data.note ?? '',
-    priority: data.priority ?? 'medium',
+    is_urgent: String(data.is_urgent ?? false),
+    is_important: (data.is_important ?? 'medium') as string,
     status: 'todo',
     deadline: data.deadline ?? '',
     start_time: data.start_time ?? '',
@@ -134,6 +157,8 @@ export async function createTask(
   return {
     ...row, id, user_id: USER_ID,
     category_id: row.category_id || null,
+    project_id: row.project_id || null,
+    phase_id: row.phase_id || null,
     deadline: row.deadline || null,
     start_time: row.start_time || null,
     end_time: row.end_time || null,
@@ -170,9 +195,12 @@ export async function updateTask(
 
   const updates: Record<string, string> = {
     category_id: data.category_id ?? task.category_id ?? '',
+    project_id: data.project_id ?? task.project_id ?? '',
+    phase_id: data.phase_id ?? task.phase_id ?? '',
     title: data.title ?? task.title,
     note: data.note ?? task.note ?? '',
-    priority: data.priority ?? task.priority,
+    is_urgent: String(data.is_urgent ?? task.is_urgent),
+    is_important: (data.is_important ?? task.is_important) as string,
     status: data.status ?? task.status,
     deadline: data.deadline ?? task.deadline ?? '',
     start_time: data.start_time ?? task.start_time ?? '',
@@ -203,7 +231,11 @@ export async function updateTask(
 
   return {
     ...task, ...updates,
+    is_urgent: (updates.is_urgent === 'true'),
+    is_important: (['high','medium','low'].includes(updates.is_important) ? updates.is_important : 'medium') as ImportanceLevel,
     category_id: updates.category_id || null,
+    project_id: updates.project_id || null,
+    phase_id: updates.phase_id || null,
     deadline: updates.deadline || null,
     start_time: updates.start_time || null,
     end_time: updates.end_time || null,
@@ -276,8 +308,12 @@ export async function toggleTaskDone(task: Task): Promise<Partial<Task> & { newR
       const newRow: Record<string, string> = {
         id: newId, user_id: USER_ID,
         category_id: task.category_id ?? '',
+        project_id: task.project_id ?? '',
+        phase_id: task.phase_id ?? '',
         title: task.title, note: task.note ?? '',
-        priority: task.priority, status: 'todo',
+        is_urgent: String(task.is_urgent),
+        is_important: task.is_important,
+        status: 'todo',
         deadline: nextDeadline,
         start_time: task.start_time ?? '',
         end_time: task.end_time ?? '',
@@ -300,8 +336,12 @@ export async function toggleTaskDone(task: Task): Promise<Partial<Task> & { newR
       newRecurringTask = {
         id: newId, user_id: USER_ID,
         category_id: task.category_id,
+        project_id: task.project_id ?? null,
+        phase_id: task.phase_id ?? null,
         title: task.title, note: task.note ?? '',
-        priority: task.priority, status: 'todo',
+        is_urgent: task.is_urgent,
+        is_important: task.is_important,
+        status: 'todo',
         deadline: nextDeadline,
         start_time: task.start_time, end_time: task.end_time,
         recurring: task.recurring,
@@ -309,6 +349,8 @@ export async function toggleTaskDone(task: Task): Promise<Partial<Task> & { newR
         google_event_id: null, completed_at: null,
         created_at: ts, updated_at: ts,
         category: task.category,
+        project: task.project,
+        phase: task.phase,
         subtasks: (task.subtasks || []).map((s, i) => ({
           ...s, id: generateId(), task_id: newId,
           done: false, sort_order: i, created_at: ts,

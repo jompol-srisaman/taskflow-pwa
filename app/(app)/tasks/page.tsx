@@ -9,7 +9,13 @@ import { KanbanView } from '@/components/views/KanbanView'
 import { isPast, parseISO, isToday, differenceInDays, isWithinInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
 
 export default function TasksPage() {
-  const { tasks, categories, loading } = useTaskStore()
+  const { tasks: allTasks, categories, loading, currentProjectId, projects } = useTaskStore()
+  // กรองตาม project — ถ้าเลือก project ใดอยู่ให้แสดงเฉพาะ project นั้น
+  // ถ้าไม่ได้เลือก ซ่อน tasks จาก archived projects ออกไป
+  const archivedProjectIds = new Set(projects.filter(p => p.status === 'archived').map(p => p.id))
+  const tasks = currentProjectId
+    ? allTasks.filter(t => t.project_id === currentProjectId)
+    : allTasks.filter(t => !t.project_id || !archivedProjectIds.has(t.project_id))
   const { viewMode, setViewMode, filter, setFilter, openTaskModal } = useUIStore()
   const searchParams = useSearchParams()
 
@@ -50,7 +56,8 @@ export default function TasksPage() {
     else if (filter.status === 'done') result = result.filter(t => t.status === 'done')
 
     if (filter.categoryId !== 'all') result = result.filter(t => t.category_id === filter.categoryId)
-    if (filter.priority !== 'all') result = result.filter(t => t.priority === filter.priority)
+    if (filter.is_urgent !== 'all') result = result.filter(t => t.is_urgent === filter.is_urgent)
+    if (filter.is_important !== 'all') result = result.filter(t => t.is_important === filter.is_important)
 
     // Date filter
     if (filter.dateFilter === 'today') {

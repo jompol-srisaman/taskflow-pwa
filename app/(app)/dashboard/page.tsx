@@ -7,8 +7,15 @@ import { isToday, isPast, differenceInDays, parseISO } from 'date-fns'
 import { useRouter } from 'next/navigation'
 
 export default function DashboardPage() {
-  const { tasks, categories, loading } = useTaskStore()
+  const { tasks: allTasks, categories, loading, currentProjectId, projects } = useTaskStore()
   const { openTaskModal } = useUIStore()
+
+  // กรองตาม project — ซ่อน tasks จาก archived projects เมื่อไม่ได้เลือก project ใด
+  const archivedProjectIds = new Set(projects.filter(p => p.status === 'archived').map(p => p.id))
+  const tasks = currentProjectId
+    ? allTasks.filter(t => t.project_id === currentProjectId)
+    : allTasks.filter(t => !t.project_id || !archivedProjectIds.has(t.project_id))
+  const currentProject = projects.find(p => p.id === currentProjectId)
   const router = useRouter()
 
   const stats = useMemo(() => {
@@ -21,7 +28,13 @@ export default function DashboardPage() {
       const d = differenceInDays(parseISO(t.deadline), new Date())
       return d >= 0 && d <= 3
     })
-    return { total: tasks.length, active: active.length, done: done.length, overdue: overdue.length, dueToday: dueToday.length, dueSoon: dueSoon.length }
+    const eEisenhower = {
+      urgentImportant:    active.filter(t => t.is_urgent && t.is_important === 'high').length,
+      urgentNotImportant: active.filter(t => t.is_urgent && t.is_important !== 'high').length,
+      importantNotUrgent: active.filter(t => !t.is_urgent && t.is_important === 'high').length,
+      neither:            active.filter(t => !t.is_urgent && t.is_important !== 'high').length,
+    }
+    return { total: tasks.length, active: active.length, done: done.length, overdue: overdue.length, dueToday: dueToday.length, dueSoon: dueSoon.length, eisenhower: eEisenhower }
   }, [tasks])
 
   const recentTasks = useMemo(() =>
@@ -44,8 +57,12 @@ export default function DashboardPage() {
       {/* Page header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', gap: '12px' }}>
         <div>
-          <div style={{ fontSize: '20px', fontWeight: 600, letterSpacing: '-0.4px' }}>Dashboard</div>
-          <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>ภาพรวมงานทั้งหมด</div>
+          <div style={{ fontSize: '20px', fontWeight: 600, letterSpacing: '-0.4px' }}>
+            {currentProject ? currentProject.name : 'Dashboard'}
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
+            {currentProject ? 'ภาพรวม project' : 'ภาพรวมงานทั้งหมด'}
+          </div>
         </div>
         <button className="btn-primary desktop-only" onClick={() => openTaskModal()}>
           + เพิ่มงาน
@@ -92,6 +109,48 @@ export default function DashboardPage() {
 
       {/* Charts row */}
       <div className="chart-row">
+        {/* Eisenhower Matrix */}
+        <div className="chart-box" style={{ flex: 1.5 }}>
+          <div className="chart-title">Eisenhower Matrix (งานที่ค้าง)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', height: '180px' }}>
+            <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', borderRadius: 'var(--r)', padding: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ fontSize: '20px', fontWeight: 600, color: 'var(--red)' }}>{stats.eisenhower.urgentImportant}</div>
+              <div style={{ fontSize: '10px', color: 'var(--red)', textAlign: 'center' }}>ด่วน & สำคัญ<br/>(ทำทันที)</div>
+            </div>
+            <div style={{ background: 'var(--purple-bg)', border: '1px solid var(--purple)', borderRadius: 'var(--r)', padding: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ fontSize: '20px', fontWeight: 600, color: 'var(--purple)' }}>{stats.eisenhower.importantNotUrgent}</div>
+              <div style={{ fontSize: '10px', color: 'var(--purple)', textAlign: 'center' }}>สำคัญ ไม่ด่วน<br/>(วางแผน)</div>
+            </div>
+            <div style={{ background: 'var(--orange-bg)', border: '1px solid var(--orange)', borderRadius: 'var(--r)', padding: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ fontSize: '20px', fontWeight: 600, color: 'var(--orange)' }}>{stats.eisenhower.urgentNotImportant}</div>
+              <div style={{ fontSize: '10px', color: 'var(--orange)', textAlign: 'center' }}>ด่วน ไม่สำคัญ<br/>(มอบหมาย)</div>
+            </div>
+            <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--r)', padding: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text2)' }}>{stats.eisenhower.neither}</div>
+              <div style={{ fontSize: '10px', color: 'var(--text2)', textAlign: 'center' }}>ไม่ด่วน ไม่สำคัญ<br/>(ลดละเลิก)</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Completion */}
+        <div className="chart-box">
+          <div className="chart-title">ความคืบหน้า</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', height: '180px' }}>
+            <div style={{ fontSize: '48px', fontWeight: 600, fontFamily: 'var(--mono)', letterSpacing: '-2px', color: 'var(--accent)', lineHeight: 1 }}>
+              {completionPct}%
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
+              เสร็จ {stats.done} จาก {stats.total} งาน
+            </div>
+            <div style={{ width: '100%', height: '6px', background: 'var(--surface2)', borderRadius: '3px', overflow: 'hidden' }}>
+              <div style={{ height: '100%', background: 'var(--green)', width: `${completionPct}%`, borderRadius: '3px', transition: 'width .5s' }} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Charts row 2 */}
+      <div className="chart-row">
         {/* Category breakdown */}
         <div className="chart-box">
           <div className="chart-title">งานตามกลุ่ม</div>
@@ -115,22 +174,6 @@ export default function DashboardPage() {
               })}
             </div>
           )}
-        </div>
-
-        {/* Completion */}
-        <div className="chart-box">
-          <div className="chart-title">ความคืบหน้า</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', height: '120px' }}>
-            <div style={{ fontSize: '48px', fontWeight: 600, fontFamily: 'var(--mono)', letterSpacing: '-2px', color: 'var(--accent)', lineHeight: 1 }}>
-              {completionPct}%
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
-              เสร็จ {stats.done} จาก {stats.total} งาน
-            </div>
-            <div style={{ width: '100%', height: '6px', background: 'var(--surface2)', borderRadius: '3px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: 'var(--green)', width: `${completionPct}%`, borderRadius: '3px', transition: 'width .5s' }} />
-            </div>
-          </div>
         </div>
       </div>
 

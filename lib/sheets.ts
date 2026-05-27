@@ -134,14 +134,18 @@ export async function ensureSheets() {
   if (sheetsInitialized) return
   const sheets = getSheetsClient()
   const SHEET_HEADERS: Record<string, string[]> = {
-    tasks: ['id','user_id','category_id','title','note','priority','status','deadline','start_time','end_time','recurring','total_time_seconds','timer_started_at','google_event_id','completed_at','created_at','updated_at'],
+    tasks: ['id','user_id','category_id','project_id','phase_id','title','note','is_urgent','is_important','status','deadline','start_time','end_time','recurring','total_time_seconds','timer_started_at','google_event_id','completed_at','created_at','updated_at'],
     categories: ['id','user_id','name','color','bg_color','is_preset','sort_order','created_at'],
     subtasks: ['id','task_id','title','done','sort_order','created_at'],
     activity_log: ['id','user_id','task_id','action','task_title','created_at'],
+    projects: ['id','user_id','name','description','color','status','sort_order','created_at'],
+    phases: ['id','project_id','name','color','sort_order','created_at'],
+    project_notes: ['id','project_id','note','type','created_at'],
   }
 
   const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
   const existingNames = new Set(meta.data.sheets?.map(s => s.properties?.title) ?? [])
+  console.log('Existing sheets in Google Spreadsheet:', Array.from(existingNames))
 
   const createRequests = Object.keys(SHEET_HEADERS)
     .filter(name => !existingNames.has(name))
@@ -154,7 +158,7 @@ export async function ensureSheets() {
     })
   }
 
-  for (const [name, headers] of Object.entries(SHEET_HEADERS)) {
+  for (const [name, requiredHeaders] of Object.entries(SHEET_HEADERS)) {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: `${name}!A1:1`,
@@ -164,10 +168,24 @@ export async function ensureSheets() {
         spreadsheetId: SPREADSHEET_ID,
         range: `${name}!A1`,
         valueInputOption: 'RAW',
-        requestBody: { values: [headers] },
+        requestBody: { values: [requiredHeaders] },
       })
+      headersCache.set(name, requiredHeaders)
     } else {
-      headersCache.set(name, res.data.values[0] as string[])
+      const existing = res.data.values[0] as string[]
+      const missing = requiredHeaders.filter(h => !existing.includes(h))
+      if (missing.length) {
+        // Append missing columns to header row
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `${name}!${colLetter(existing.length)}1`,
+          valueInputOption: 'RAW',
+          requestBody: { values: [missing] },
+        })
+        headersCache.set(name, [...existing, ...missing])
+      } else {
+        headersCache.set(name, existing)
+      }
     }
   }
   sheetsInitialized = true

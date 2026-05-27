@@ -38,8 +38,10 @@ interface UIState {
 
 const defaultFilter: TaskFilter = {
   status: 'all',
-  priority: 'all',
+  is_urgent: 'all',
+  is_important: 'all' as const,
   categoryId: 'all',
+  projectId: 'all',
   search: '',
   dateFilter: 'all',
 }

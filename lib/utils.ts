@@ -1,9 +1,8 @@
-import { type ClassValue, clsx } from 'clsx'
 import { format, isToday, isTomorrow, isPast, differenceInDays, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
-import type { Priority, TaskStatus, Category } from '@/types'
+import type { TaskStatus, Category, ImportanceLevel } from '@/types'
 
-export function cn(...inputs: ClassValue[]) {
+export function cn(...inputs: any[]) {
   return inputs.filter(Boolean).join(' ')
 }
 
@@ -37,16 +36,19 @@ export function formatTime(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-export const PRIORITY_LABEL: Record<Priority, string> = {
-  high: 'สูง — ด่วนมาก',
-  medium: 'กลาง — ปกติ',
-  low: 'ต่ำ — ไม่รีบ',
+export function getImportanceLabel(importance: ImportanceLevel): { label: string; color: string; bg: string } {
+  if (importance === 'high')   return { label: 'สำคัญ',   color: 'var(--purple)', bg: 'var(--purple-bg)' }
+  if (importance === 'medium') return { label: 'ปานกลาง', color: 'var(--blue)',   bg: 'var(--blue-bg)' }
+  return { label: 'ต่ำ', color: 'var(--text3)', bg: 'var(--surface2)' }
 }
 
-export const PRIORITY_BADGE: Record<Priority, string> = {
-  high: 'prio-high',
-  medium: 'prio-mid',
-  low: 'prio-low',
+// ใช้ใน Calendar dot colors และ Calendar Google colorId
+export function getEisenhowerLabel(urgent: boolean, importance: ImportanceLevel): { label: string; color: string; bg: string } {
+  if (urgent && importance === 'high')   return { label: 'ด่วน & สำคัญ',  color: 'var(--red)',    bg: 'var(--red-bg)' }
+  if (urgent)                            return { label: 'ด่วน',           color: 'var(--orange)', bg: 'var(--orange-bg)' }
+  if (importance === 'high')             return { label: 'สำคัญ',          color: 'var(--purple)', bg: 'var(--purple-bg)' }
+  if (importance === 'medium')           return { label: 'ปานกลาง',        color: 'var(--blue)',   bg: 'var(--blue-bg)' }
+  return { label: 'ต่ำ', color: 'var(--text3)', bg: 'var(--surface2)' }
 }
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {

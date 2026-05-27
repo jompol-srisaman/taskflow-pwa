@@ -1,9 +1,46 @@
-export type Priority = 'high' | 'medium' | 'low'
 export type TaskStatus = 'todo' | 'in_progress' | 'done'
 export type RecurringType = '' | 'daily' | 'weekly' | 'monthly'
+export type ImportanceLevel = 'high' | 'medium' | 'low'
 export type ThemeType = 'light' | 'dark' | 'auto'
 export type AccentColor = 'black' | 'blue' | 'green' | 'purple' | 'red' | 'orange'
 export type FontSize = 'sm' | 'md' | 'lg'
+export type ProjectStatus = 'active' | 'archived' | 'on_hold'
+export type NoteType = 'blocker' | 'update' | 'resolved'
+
+export interface ProjectNote {
+  id: string
+  project_id: string
+  note: string
+  type: NoteType
+  created_at: string
+}
+
+export interface Project {
+  id: string
+  user_id: string
+  name: string
+  description: string
+  color: string
+  status: ProjectStatus
+  sort_order: number
+  created_at: string
+  // computed
+  phases?: Phase[]
+  taskCount?: number
+  doneCount?: number
+}
+
+export interface Phase {
+  id: string
+  project_id: string
+  name: string
+  color: string
+  sort_order: number
+  created_at: string
+  // computed
+  taskCount?: number
+  doneCount?: number
+}
 
 export interface Category {
   id: string
@@ -29,9 +66,12 @@ export interface Task {
   id: string
   user_id: string
   category_id: string | null
+  project_id: string | null
+  phase_id: string | null
   title: string
   note: string
-  priority: Priority
+  is_urgent: boolean
+  is_important: ImportanceLevel
   status: TaskStatus
   deadline: string | null
   start_time: string | null
@@ -45,6 +85,8 @@ export interface Task {
   updated_at: string
   // joined
   category?: Category
+  project?: Project
+  phase?: Phase
   subtasks?: Subtask[]
 }
 
@@ -70,7 +112,8 @@ export interface UserSettings {
   accent: AccentColor
   fs: FontSize
   defaultCategory: string
-  defaultPriority: Priority
+  defaultUrgent: boolean
+  defaultImportant: boolean
   warnDays: number
   weekStart: 'sun' | 'mon'
   showTimer: boolean
@@ -90,8 +133,10 @@ export type ViewMode = 'list' | 'card' | 'kanban'
 // Filter types
 export interface TaskFilter {
   status: 'all' | 'active' | 'done'
-  priority: Priority | 'all'
+  is_urgent: boolean | 'all'
+  is_important: ImportanceLevel | 'all'
   categoryId: string | 'all'
+  projectId: string | 'all'
   search: string
   dateFilter: 'all' | 'today' | 'this_week' | 'this_month'
 }

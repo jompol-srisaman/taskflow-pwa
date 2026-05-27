@@ -1,13 +1,28 @@
 import { getCalendarClient, CALENDAR_ID } from '@/lib/sheets'
 import type { Task } from '@/types'
 
-const PRIO_COLOR: Record<string, string> = { high: '11', medium: '6', low: '1' }
-
 const TZ = 'Asia/Bangkok'
 
 function buildEvent(task: Task) {
   const date = task.deadline!.substring(0, 10)
-  const colorId = task.status === 'done' ? '8' : (PRIO_COLOR[task.priority] ?? '1')
+  
+  // Eisenhower Matrix Color mapping for Calendar
+  // Urgent + Important (Do first) -> Red (11)
+  // Not Urgent + Important (Schedule) -> Purple (3)
+  // Urgent + Not Important (Delegate) -> Orange (6)
+  // Not Urgent + Not Important (Eliminate) -> Gray (8)
+  let colorId = '1' // default
+  if (task.status === 'done') {
+    colorId = '8' // Gray
+  } else if (task.is_urgent && task.is_important === 'high') {
+    colorId = '11' // Red — ด่วน & สำคัญ
+  } else if (!task.is_urgent && task.is_important === 'high') {
+    colorId = '3'  // Purple — สำคัญ ไม่ด่วน
+  } else if (task.is_urgent) {
+    colorId = '6'  // Orange — ด่วน ปานกลาง/ต่ำ
+  } else if (task.is_important === 'medium') {
+    colorId = '9'  // Blueberry — ปานกลาง
+  }
 
   if (task.start_time) {
     return {
@@ -82,26 +97,41 @@ export interface GCalEvent {
 export async function gcalFetch(timeMin: string, timeMax: string): Promise<GCalEvent[]> {
   try {
     const cal = getCalendarClient()
-    const res = await cal.events.list({
-      calendarId: CALENDAR_ID,
-      timeMin,
-      timeMax,
-      singleEvents: true,
-      orderBy: 'startTime',
-      maxResults: 200,
-    })
-    return (res.data.items ?? []) as GCalEvent[]
+    const listRes = await cal.calendarList.list({ minAccessRole: 'reader' })
+    const calendarIds = (listRes.data.items ?? []).map(c => c.id!).filter(Boolean)
+    if (!calendarIds.includes(CALENDAR_ID)) calendarIds.push(CALENDAR_ID)
+
+    const results = await Promise.all(
+      calendarIds.map(calendarId =>
+        cal.events.list({
+          calendarId,
+          timeMin,
+          timeMax,
+          singleEvents: true,
+          orderBy: 'startTime',
+          maxResults: 500,
+        }).then(r => r.data.items ?? []).catch(() => [])
+      )
+    )
+
+    const seen = new Set<string>()
+    const merged: GCalEvent[] = []
+    for (const events of results) {
+      for (const ev of events) {
+        if (ev.id && !seen.has(ev.id)) {
+          seen.add(ev.id)
+          merged.push(ev as GCalEvent)
+        }
+      }
+    }
+    return merged
   } catch {
     return []
   }
 }
 
 export async function gcalIsConnected(): Promise<boolean> {
-  try {
-    const cal = getCalendarClient()
-    await cal.calendarList.get({ calendarId: CALENDAR_ID })
-    return true
-  } catch {
-    return false
-  }
+  const cal = getCalendarClient()
+  await cal.calendarList.get({ calendarId: CALENDAR_ID })
+  return true
 }

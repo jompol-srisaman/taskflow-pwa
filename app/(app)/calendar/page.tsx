@@ -6,10 +6,10 @@ import { fetchCalendarEvents, checkCalendarConnection } from '@/app/actions/cale
 import type { GCalEvent } from '@/lib/googleCalendar'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, isSameDay, parseISO, addMonths, subMonths, isAfter, startOfDay } from 'date-fns'
 import { th } from 'date-fns/locale'
+import { getEisenhowerLabel, getImportanceLabel } from '@/lib/utils'
 import type { Task } from '@/types'
 
 const DAY_LABELS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
-const PRIO_COLOR = { high: 'var(--red)', medium: 'var(--orange)', low: 'var(--blue)' }
 
 export default function CalendarPage() {
   const { tasks } = useTaskStore()
@@ -27,9 +27,9 @@ export default function CalendarPage() {
   useEffect(() => {
     async function loadGcal() {
       setGcalConnected(null)
-      const connected = await checkCalendarConnection()
-      setGcalConnected(connected)
-      if (!connected) { setGcalEvents([]); return }
+      const res = await checkCalendarConnection()
+      setGcalConnected(res.ok)
+      if (!res.ok) { setGcalEvents([]); return }
 
       const start = startOfMonth(currentMonth)
       const end   = endOfMonth(currentMonth)
@@ -142,7 +142,7 @@ export default function CalendarPage() {
           display: 'flex', alignItems: 'center', gap: '8px',
         }}>
           <GoogleIcon />
-          <span>Google Calendar ยังไม่ได้เชื่อมต่อ — ตรวจสอบว่า Service Account มีสิทธิ์เข้าถึง Calendar แล้ว</span>
+          <span>Google Calendar ยังไม่ได้เชื่อมต่อ — Refresh Token อาจหมดอายุ รัน <code>node scripts/get-token.js</code> เพื่อรับ Token ใหม่</span>
         </div>
       )}
       {gcalConnected === true && showGcal && (
@@ -193,7 +193,7 @@ export default function CalendarPage() {
                 <div className="cal-day-num">{format(day, 'd')}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1px' }}>
                   {activeDayTasks.slice(0, 3).map(t => (
-                    <div key={t.id} className="cal-dot" style={{ background: PRIO_COLOR[t.priority] }} />
+                    <div key={t.id} className="cal-dot" style={{ background: getEisenhowerLabel(t.is_urgent, t.is_important).color }} />
                   ))}
                   {doneDayTasks.slice(0, 1).map(t => (
                     <div key={t.id} className="cal-dot" style={{ background: 'var(--green)', opacity: 0.5 }} />
@@ -215,9 +215,10 @@ export default function CalendarPage() {
       {/* Legend */}
       <div style={{ display: 'flex', gap: '14px', marginBottom: '16px', flexWrap: 'wrap' }}>
         {[
-          { color: 'var(--red)', label: 'ด่วน (สูง)' },
-          { color: 'var(--orange)', label: 'ปานกลาง' },
-          { color: 'var(--blue)', label: 'ต่ำ' },
+          { color: 'var(--red)',    label: 'ด่วน & สำคัญ' },
+          { color: 'var(--purple)', label: 'สำคัญ' },
+          { color: 'var(--blue)',   label: 'ปานกลาง' },
+          { color: 'var(--text3)', label: 'ต่ำ' },
           { color: 'var(--green)', label: 'เสร็จแล้ว', opacity: 0.5 },
           { color: '#4285F4', label: 'Google Cal', opacity: 0.7 },
         ].map(item => (
@@ -291,7 +292,7 @@ export default function CalendarPage() {
 }
 
 function CalendarTaskItem({ task, onEdit, showDeadline = true }: { task: Task; onEdit: () => void; showDeadline?: boolean }) {
-  const prio = { high: { bg: 'var(--red-bg)', color: 'var(--red)', label: 'สูง' }, medium: { bg: 'var(--orange-bg)', color: 'var(--orange)', label: 'กลาง' }, low: { bg: 'var(--blue-bg)', color: 'var(--blue)', label: 'ต่ำ' } }[task.priority]
+  const importanceInfo = getImportanceLabel(task.is_important)
   const isDone = task.status === 'done'
 
   return (
@@ -305,11 +306,12 @@ function CalendarTaskItem({ task, onEdit, showDeadline = true }: { task: Task; o
       onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border2)'}
       onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)'}
     >
-      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isDone ? 'var(--green)' : PRIO_COLOR[task.priority], flexShrink: 0 }} />
+      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isDone ? 'var(--green)' : (task.is_urgent && task.is_important === 'high' ? 'var(--red)' : importanceInfo.color), flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '13px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isDone ? 'line-through' : 'none' }}>{task.title}</div>
         <div style={{ display: 'flex', gap: '5px', marginTop: '2px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span className="badge" style={{ background: prio.bg, color: prio.color }}>{prio.label}</span>
+          <span className="badge" style={{ background: importanceInfo.bg, color: importanceInfo.color }}>{importanceInfo.label}</span>
+          {task.is_urgent && !isDone && <span className="badge" style={{ background: 'var(--red-bg)', color: 'var(--red)' }}>ด่วน</span>}
           {task.category && <span className="badge" style={{ background: task.category.bg_color, color: task.category.color }}>{task.category.name}</span>}
           {showDeadline && task.deadline && (
             <span style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>

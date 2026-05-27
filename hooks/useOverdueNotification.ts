@@ -24,19 +24,33 @@ export function useOverdueNotification() {
 
     if (!('Notification' in window)) return
 
-    const notify = () => {
-      new Notification('มีงานเกินกำหนด!', {
-        body: `${overdue.length} รายการที่เกินกำหนดแล้ว — แตะเพื่อดู`,
-        icon: '/icons/icon-192.png',
-        tag: 'overdue-tasks',
-      })
-      localStorage.setItem('lastOverdueNotif', today)
+    const notify = async () => {
+      try {
+        // Android Chrome 86+ requires SW notifications — new Notification() throws
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.ready
+          await reg.showNotification('มีงานเกินกำหนด!', {
+            body: `${overdue.length} รายการที่เกินกำหนดแล้ว — แตะเพื่อดู`,
+            icon: '/icons/icon-192.png',
+            tag: 'overdue-tasks',
+          })
+        } else {
+          new Notification('มีงานเกินกำหนด!', {
+            body: `${overdue.length} รายการที่เกินกำหนดแล้ว — แตะเพื่อดู`,
+            icon: '/icons/icon-192.png',
+            tag: 'overdue-tasks',
+          })
+        }
+        localStorage.setItem('lastOverdueNotif', today)
+      } catch {
+        // Notification failed silently — don't crash the app
+      }
     }
 
     if (Notification.permission === 'granted') {
       notify()
     } else if (Notification.permission !== 'denied') {
-      Notification.requestPermission().then(p => { if (p === 'granted') notify() })
+      Notification.requestPermission().then(p => { if (p === 'granted') notify() }).catch(() => {})
     }
   }, [tasks])
 }

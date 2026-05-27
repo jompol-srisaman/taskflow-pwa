@@ -80,7 +80,10 @@ export default function HistoryPage() {
       const row: Record<string, string | number> = {}
       if (selectedFields.has('title'))        row['ชื่องาน'] = t.title
       if (selectedFields.has('category'))     row['กลุ่ม'] = categories.find(c => c.id === t.category_id)?.name || ''
-      if (selectedFields.has('priority'))     row['ความสำคัญ'] = t.priority === 'high' ? 'สูง' : t.priority === 'medium' ? 'กลาง' : 'ต่ำ'
+      if (selectedFields.has('priority')) {
+        row['ด่วน'] = t.is_urgent ? 'ใช่' : 'ไม่'
+        row['สำคัญ'] = t.is_important ? 'ใช่' : 'ไม่'
+      }
       if (selectedFields.has('status'))       row['สถานะ'] = t.status === 'done' ? 'เสร็จแล้ว' : t.status === 'in_progress' ? 'กำลังทำ' : 'รอทำ'
       if (selectedFields.has('deadline'))     row['Deadline'] = t.deadline || ''
       if (selectedFields.has('note'))         row['โน้ต'] = t.note || ''

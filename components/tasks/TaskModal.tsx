@@ -4,8 +4,9 @@ import { useUIStore } from '@/store/uiStore'
 import { useTaskStore } from '@/store/taskStore'
 import type { Task as TaskType } from '@/types'
 import { createTask, updateTask } from '@/app/actions/tasks'
-import { PRIORITY_LABEL, RECURRING_LABEL, generateId } from '@/lib/utils'
-import type { Subtask, Priority, RecurringType } from '@/types'
+import { RECURRING_LABEL, generateId } from '@/lib/utils'
+import type { Subtask, RecurringType, ImportanceLevel } from '@/types'
+import type { Phase } from '@/types'
 
 interface Props {
   onSaved: () => Promise<void>
@@ -13,14 +14,17 @@ interface Props {
 
 export function TaskModal({ onSaved }: Props) {
   const { taskModalOpen, editingTaskId, closeTaskModal, gcalSync: gcalEnabled } = useUIStore()
-  const { tasks, categories, upsertTask } = useTaskStore()
+  const { tasks, categories, projects, phases, currentProjectId, upsertTask } = useTaskStore()
 
   const editingTask = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null
 
   const [title, setTitle]           = useState('')
   const [note, setNote]             = useState('')
   const [categoryId, setCategoryId] = useState('')
-  const [priority, setPriority]     = useState<Priority>('medium')
+  const [projectId, setProjectId]   = useState('')
+  const [phaseId, setPhaseId]       = useState('')
+  const [isUrgent, setIsUrgent]         = useState(false)
+  const [isImportant, setIsImportant]   = useState<ImportanceLevel>('medium')
   const [deadline, setDeadline]     = useState('')
   const [startTime, setStartTime]   = useState('')
   const [endTime, setEndTime]       = useState('')
@@ -30,6 +34,11 @@ export function TaskModal({ onSaved }: Props) {
   const [saving, setSaving]         = useState(false)
   const [syncGcal, setSyncGcal]     = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
+
+  // phases filtered by selected project
+  const availablePhases: Phase[] = projectId
+    ? phases.filter(p => p.project_id === projectId).sort((a, b) => a.sort_order - b.sort_order)
+    : []
 
   const titleRef = useRef<HTMLInputElement>(null)
 
@@ -53,7 +62,10 @@ export function TaskModal({ onSaved }: Props) {
         setTitle(editingTask.title)
         setNote(editingTask.note || '')
         setCategoryId(editingTask.category_id || '')
-        setPriority(editingTask.priority)
+        setProjectId(editingTask.project_id || '')
+        setPhaseId(editingTask.phase_id || '')
+        setIsUrgent(editingTask.is_urgent)
+        setIsImportant(editingTask.is_important as ImportanceLevel)
         setDeadline(editingTask.deadline || '')
         setStartTime(editingTask.start_time || '')
         setEndTime(editingTask.end_time || '')
@@ -64,7 +76,10 @@ export function TaskModal({ onSaved }: Props) {
         setTitle('')
         setNote('')
         setCategoryId(categories[0]?.id || '')
-        setPriority('medium')
+        setProjectId(currentProjectId || '')
+        setPhaseId('')
+        setIsUrgent(false)
+        setIsImportant('medium')
         setDeadline('')
         setStartTime('')
         setEndTime('')
@@ -98,7 +113,11 @@ export function TaskModal({ onSaved }: Props) {
       const taskData = {
         title: title.trim(), note: note.trim(),
         category_id: categoryId || null,
-        priority, deadline: deadline || null,
+        project_id: projectId || null,
+        phase_id: phaseId || null,
+        is_urgent: isUrgent,
+        is_important: isImportant,
+        deadline: deadline || null,
         start_time: startTime || null,
         end_time: endTime || null,
         recurring,
@@ -190,6 +209,32 @@ export function TaskModal({ onSaved }: Props) {
           <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="บันทึกรายละเอียด..." />
         </div>
 
+        {/* Project + Phase row */}
+        {projects.length > 0 && (
+          <div className="field-row">
+            <div className="field">
+              <label>Project</label>
+              <select value={projectId} onChange={e => { setProjectId(e.target.value); setPhaseId('') }}>
+                <option value="">-- ไม่ระบุ --</option>
+                {projects.filter(p => p.status === 'active').map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            {availablePhases.length > 0 && (
+              <div className="field">
+                <label>Phase</label>
+                <select value={phaseId} onChange={e => setPhaseId(e.target.value)}>
+                  <option value="">-- ไม่ระบุ --</option>
+                  {availablePhases.map(ph => (
+                    <option key={ph.id} value={ph.id}>{ph.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="field-row">
           <div className="field">
             <label>กลุ่มงาน</label>
@@ -198,11 +243,54 @@ export function TaskModal({ onSaved }: Props) {
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div className="field">
+          <div className="field" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label>ความสำคัญ</label>
-            <select value={priority} onChange={e => setPriority(e.target.value as Priority)}>
-              {Object.entries(PRIORITY_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+            <div style={{ display: 'flex', gap: '5px', marginTop: '4px' }}>
+              {([
+                { value: 'high',   label: 'สำคัญ',   color: 'var(--purple)', border: 'var(--purple)' },
+                { value: 'medium', label: 'ปานกลาง', color: 'var(--blue)',   border: 'var(--blue)' },
+                { value: 'low',    label: 'ต่ำ',      color: 'var(--text3)', border: 'var(--border2)' },
+              ] as { value: ImportanceLevel; label: string; color: string; border: string }[]).map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setIsImportant(opt.value)}
+                  style={{
+                    padding: '5px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
+                    fontFamily: 'var(--font)', transition: 'all 0.12s',
+                    border: `1px solid ${isImportant === opt.value ? opt.border : 'var(--border)'}`,
+                    background: isImportant === opt.value ? `color-mix(in srgb, ${opt.color} 15%, var(--surface))` : 'transparent',
+                    color: isImportant === opt.value ? opt.color : 'var(--text2)',
+                    fontWeight: isImportant === opt.value ? 600 : 400,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <label style={{ marginTop: '8px' }}>ความด่วน</label>
+            <div style={{ display: 'flex', gap: '5px' }}>
+              {([
+                { value: true,  label: 'ด่วน',    color: 'var(--red)',   border: 'var(--red)' },
+                { value: false, label: 'ไม่ด่วน', color: 'var(--text3)', border: 'var(--border2)' },
+              ] as { value: boolean; label: string; color: string; border: string }[]).map(opt => (
+                <button
+                  key={String(opt.value)}
+                  type="button"
+                  onClick={() => setIsUrgent(opt.value)}
+                  style={{
+                    padding: '5px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
+                    fontFamily: 'var(--font)', transition: 'all 0.12s',
+                    border: `1px solid ${isUrgent === opt.value ? opt.border : 'var(--border)'}`,
+                    background: isUrgent === opt.value ? `color-mix(in srgb, ${opt.color} 15%, var(--surface))` : 'transparent',
+                    color: isUrgent === opt.value ? opt.color : 'var(--text2)',
+                    fontWeight: isUrgent === opt.value ? 600 : 400,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
