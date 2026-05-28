@@ -192,13 +192,19 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
   }
 
   return (
-    <div className="overlay open" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="overlay open"
+      style={{ alignItems: 'center', padding: '16px' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       {/* flex column: content scrolls, actions fixed at bottom */}
-      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', maxHeight: '72vh' }}>
+      <div className="modal modal-lg" style={{
+        display: 'flex', flexDirection: 'column',
+        padding: 0, overflow: 'hidden',
+        maxHeight: '82vh',
+        borderRadius: 'var(--r3)',  /* rounded all sides — override mobile flat-bottom */
+      }}>
 
         {/* Scrollable content — minHeight:0 จำเป็นเพื่อให้ flex child scroll ได้ใน flex container */}
         <div ref={modalRef} style={{ overflowY: 'auto', flex: 1, minHeight: 0, padding: '22px 18px 8px' }}>
-          <div className="modal-drag" />
         <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>
           {project ? 'แก้ไข Project' : 'สร้าง Project ใหม่'}
         </div>
