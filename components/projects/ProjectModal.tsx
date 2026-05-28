@@ -78,7 +78,7 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
     setNewPhaseName('')
     setConfirmDelete(false)
     setNameError(false)
-    setTimeout(() => nameRef.current?.focus(), 80)
+    setTimeout(() => nameRef.current?.focus({ preventScroll: true }), 80)
   }, [project])
 
   function addPhaseByName(name: string) {
@@ -121,7 +121,7 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
   async function handleSave() {
     if (!name.trim()) {
       setNameError(true)
-      nameRef.current?.focus()
+      nameRef.current?.focus({ preventScroll: true })
       return
     }
     setNameError(false)
@@ -194,10 +194,10 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
   return (
     <div className="overlay open" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       {/* flex column: content scrolls, actions fixed at bottom */}
-      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', maxHeight: '78vh' }}>
+      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', maxHeight: '72vh' }}>
 
-        {/* Scrollable content */}
-        <div ref={modalRef} style={{ overflowY: 'auto', flex: 1, padding: '22px 18px 8px' }}>
+        {/* Scrollable content — minHeight:0 จำเป็นเพื่อให้ flex child scroll ได้ใน flex container */}
+        <div ref={modalRef} style={{ overflowY: 'auto', flex: 1, minHeight: 0, padding: '22px 18px 8px' }}>
           <div className="modal-drag" />
         <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>
           {project ? 'แก้ไข Project' : 'สร้าง Project ใหม่'}
