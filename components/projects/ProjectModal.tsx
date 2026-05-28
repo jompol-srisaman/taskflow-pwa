@@ -59,6 +59,7 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
   const [deletingPhaseId, setDeletingPhaseId] = useState<string | null>(null)
   const [nameError, setNameError] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (project) {
@@ -77,7 +78,11 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
     setNewPhaseName('')
     setConfirmDelete(false)
     setNameError(false)
-    setTimeout(() => nameRef.current?.focus(), 80)
+    // reset scroll + focus หลัง CSS transition (220ms) เสร็จ
+    setTimeout(() => {
+      if (modalRef.current) modalRef.current.scrollTop = 0
+      nameRef.current?.focus({ preventScroll: true })
+    }, 260)
   }, [project])
 
   function addPhaseByName(name: string) {
@@ -192,7 +197,7 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
 
   return (
     <div className="overlay open" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal modal-lg">
+      <div ref={modalRef} className="modal modal-lg">
         <div className="modal-drag" />
         <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>
           {project ? 'แก้ไข Project' : 'สร้าง Project ใหม่'}
