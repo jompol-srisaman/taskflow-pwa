@@ -78,11 +78,7 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
     setNewPhaseName('')
     setConfirmDelete(false)
     setNameError(false)
-    // reset scroll + focus หลัง CSS transition (220ms) เสร็จ
-    setTimeout(() => {
-      if (modalRef.current) modalRef.current.scrollTop = 0
-      nameRef.current?.focus({ preventScroll: true })
-    }, 260)
+    setTimeout(() => nameRef.current?.focus(), 80)
   }, [project])
 
   function addPhaseByName(name: string) {
@@ -197,8 +193,12 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
 
   return (
     <div className="overlay open" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div ref={modalRef} className="modal modal-lg">
-        <div className="modal-drag" />
+      {/* flex column: content scrolls, actions fixed at bottom */}
+      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
+
+        {/* Scrollable content */}
+        <div ref={modalRef} style={{ overflowY: 'auto', flex: 1, padding: '22px 18px 8px' }}>
+          <div className="modal-drag" />
         <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>
           {project ? 'แก้ไข Project' : 'สร้าง Project ใหม่'}
         </div>
@@ -382,8 +382,17 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
           </div>
         </div>
 
-        {/* Actions */}
-        <div style={{ position: 'sticky', bottom: 0, zIndex: 1, background: 'var(--surface)', display: 'flex', gap: '8px', justifyContent: 'space-between', marginTop: '18px', paddingTop: '14px', paddingBottom: '4px', borderTop: '1px solid var(--border)' }}>
+        </div>{/* end scrollable content */}
+
+        {/* Actions — always visible, never scrolls */}
+        <div style={{
+          flexShrink: 0,
+          display: 'flex', gap: '8px', justifyContent: 'space-between',
+          padding: '14px 18px',
+          paddingBottom: 'calc(14px + env(safe-area-inset-bottom, 0px))',
+          borderTop: '1px solid var(--border)',
+          background: 'var(--surface)',
+        }}>
           <div>
             {project && !confirmDelete && (
               <button
@@ -413,6 +422,7 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
             </button>
           </div>
         </div>
+
       </div>
     </div>
   )
