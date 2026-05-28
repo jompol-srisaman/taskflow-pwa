@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTaskStore } from '@/store/taskStore'
 import { createProject, updateProject, deleteProject, createPhase, updatePhase, deletePhase, reorderPhases } from '@/app/actions/projects'
 import { generateId } from '@/lib/utils'
@@ -57,6 +57,8 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deletingPhaseId, setDeletingPhaseId] = useState<string | null>(null)
+  const [nameError, setNameError] = useState(false)
+  const nameRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (project) {
@@ -74,6 +76,8 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
     }
     setNewPhaseName('')
     setConfirmDelete(false)
+    setNameError(false)
+    setTimeout(() => nameRef.current?.focus(), 80)
   }, [project])
 
   function addPhaseByName(name: string) {
@@ -114,7 +118,12 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
   }
 
   async function handleSave() {
-    if (!name.trim()) return
+    if (!name.trim()) {
+      setNameError(true)
+      nameRef.current?.focus()
+      return
+    }
+    setNameError(false)
     setSaving(true)
     try {
       if (project) {
@@ -183,7 +192,7 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
 
   return (
     <div className="overlay open" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal modal-lg" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="modal modal-lg">
         <div className="modal-drag" />
         <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>
           {project ? 'แก้ไข Project' : 'สร้าง Project ใหม่'}
@@ -193,13 +202,15 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
         <div className="field">
           <label>ชื่อ Project *</label>
           <input
+            ref={nameRef}
             type="text"
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={e => { setName(e.target.value); if (e.target.value.trim()) setNameError(false) }}
             placeholder="เช่น Website Revamp"
-            autoFocus
             onKeyDown={e => { if (e.key === 'Enter') e.preventDefault() }}
+            style={nameError ? { borderColor: 'var(--red)' } : undefined}
           />
+          {nameError && <div style={{ fontSize: '11px', color: 'var(--red)', marginTop: '4px' }}>กรุณาใส่ชื่อ Project</div>}
         </div>
 
         {/* Description */}
@@ -367,7 +378,7 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', marginTop: '18px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
+        <div style={{ position: 'sticky', bottom: 0, zIndex: 1, background: 'var(--surface)', display: 'flex', gap: '8px', justifyContent: 'space-between', marginTop: '18px', paddingTop: '14px', paddingBottom: '4px', borderTop: '1px solid var(--border)' }}>
           <div>
             {project && !confirmDelete && (
               <button
@@ -392,7 +403,7 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="btn-ghost" onClick={onClose}>ยกเลิก</button>
-            <button className="btn-primary" onClick={handleSave} disabled={saving || !name.trim()}>
+            <button type="button" className="btn-primary" onClick={handleSave} disabled={saving}>
               {saving ? 'กำลังบันทึก...' : '💾 บันทึก'}
             </button>
           </div>
