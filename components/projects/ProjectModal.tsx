@@ -194,7 +194,7 @@ export function ProjectModal({ project, onClose, onSaved }: Props) {
   return (
     <div className="overlay open" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       {/* flex column: content scrolls, actions fixed at bottom */}
-      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
+      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', maxHeight: '78vh' }}>
 
         {/* Scrollable content */}
         <div ref={modalRef} style={{ overflowY: 'auto', flex: 1, padding: '22px 18px 8px' }}>
